@@ -6,8 +6,10 @@ Usage (from this folder, in the Conda environment with Docling installed):
 Outputs are written beside the GROBID previews without overwriting them:
     MD_Files/trentadue_2018.md
     MD_Files/smith_2024.md
+    Docling_Files/trentadue_2018.json
+    Docling_Files/smith_2024.json
 
-Use --force to replace existing Docling Markdown files.
+Use --force to replace existing Markdown and Docling JSON files.
 """
 
 from __future__ import annotations
@@ -31,8 +33,9 @@ from docling.document_converter import PdfFormatOption
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "MD_Files"
+DOCLING_DIR = ROOT / "Docling_Files"
 IMAGE_DIR = ROOT / "Image_Files"
-EXCLUDED_DIR_NAMES = {"MD_Files", "XML_Files"}
+EXCLUDED_DIR_NAMES = {"MD_Files", "Docling_Files", "XML_Files"}
 
 
 def find_pdfs() -> list[Path]:
@@ -208,6 +211,11 @@ def prior_output(pdf_path: Path, source_hash: str) -> Path | None:
     return None
 
 
+def docling_path_for(markdown_path: Path) -> Path:
+    """Return the lossless Docling JSON path paired with a Markdown output."""
+    return DOCLING_DIR / f"{markdown_path.stem}.json"
+
+
 def build_converter(
     export_images: bool, image_scale: float, enrich_formulas: bool
 ) -> DocumentConverter:
@@ -334,15 +342,16 @@ def main() -> int:
     for number, pdf_path in enumerate(pdfs, start=1):
         source_hash = sha256(pdf_path)
         existing = prior_output(pdf_path, source_hash)
-        if existing and not args.force:
+        if existing and docling_path_for(existing).exists() and not args.force:
             print(f"[{number}/{len(pdfs)}] Skipping {pdf_path.name}: {existing.name} already exists.")
         else:
             pending.append((number, pdf_path, source_hash, existing))
 
     if not pending:
-        print("Done. All PDFs already have current Docling Markdown files.")
+        print("Done. All PDFs already have current Markdown and Docling JSON files.")
         return 0
 
+    DOCLING_DIR.mkdir(exist_ok=True)
     converter = build_converter(args.export_images, args.image_scale, args.enrich_formulas)
     failures = 0
 
@@ -360,16 +369,22 @@ def main() -> int:
             )
             output_path = output_path_for(metadata)
             metadata["record_id"] = output_path.stem
+            docling_path = docling_path_for(output_path)
             if output_path.exists() and not args.force:
-                print(f"  Skipping: {output_path.name} already exists (use --force to redo it).")
-                continue
-            output_path.write_text(yaml_front_matter(metadata) + markdown, encoding="utf-8")
+                print(f"  Preserved existing {output_path.name}")
+            else:
+                output_path.write_text(yaml_front_matter(metadata) + markdown, encoding="utf-8")
+                print(f"  Wrote {output_path.name}")
+            document.save_as_json(docling_path)
+            print(f"  Wrote {docling_path.relative_to(ROOT)}")
             if args.export_images:
                 export_images(document, metadata, args.image_scale)
             if args.force and previous_output and previous_output != output_path:
                 previous_output.unlink()
+                previous_docling = docling_path_for(previous_output)
+                if previous_docling.exists():
+                    previous_docling.unlink()
                 print(f"  Replaced outdated metadata file {previous_output.name}")
-            print(f"  Wrote {output_path.name}")
         except Exception as error:  # Keep processing the rest of a PDF collection.
             failures += 1
             print(f"  FAILED: {error}", file=sys.stderr)
@@ -377,7 +392,7 @@ def main() -> int:
     if failures:
         print(f"Finished with {failures} failure(s).", file=sys.stderr)
         return 1
-    print(f"Done. Docling Markdown files are in {OUTPUT_DIR}")
+    print(f"Done. Markdown files are in {OUTPUT_DIR}; Docling JSON files are in {DOCLING_DIR}")
     return 0
 
 

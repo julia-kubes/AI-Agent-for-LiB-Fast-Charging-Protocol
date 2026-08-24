@@ -37,6 +37,9 @@ Knowledge Database/
 ├── MD_Files/
 │   ├── trentadue_2018.md
 │   └── smith_2024.md
+├── Docling_Files/           # Lossless DoclingDocument serialization
+│   ├── trentadue_2018.json
+│   └── smith_2024.json
 └── Image_Files/              # Created only with --export-images
     └── trentadue_2018/
         ├── figure_001.png
@@ -54,6 +57,11 @@ Each Markdown file begins with YAML metadata, including:
 - Docling version and parsing timestamp
 - whether formula enrichment was used
 
+Each Markdown file has a matching JSON file in `Docling_Files/`. This is a
+lossless serialization of Docling's structured `DoclingDocument`, suitable for
+reloading later with `DoclingDocument.load_from_json()` and passing to native
+Docling chunkers such as `HybridChunker`.
+
 Example output filename:
 ```
 MD_Files/trentadue_2018.md
@@ -62,9 +70,9 @@ If two papers have the same primary-author surname and publication year, the con
 
 ## Re-run conversion
 
-By default, an existing output file is preserved.
+By default, existing Markdown and Docling JSON output files are preserved.
 
-To recreate and replace existing Docling Markdown files:
+To recreate and replace existing Markdown and Docling JSON files:
 ```
 python docling-convert.py --force
 ```
@@ -101,6 +109,9 @@ python docling-convert.py --enrich-formulas --export-images --force
 ```
 Notes
 - The original PDFs are never modified.
+- Existing Markdown outputs that predate Docling JSON are preserved; rerunning
+  the converter creates their missing JSON counterparts without requiring
+  `--force`.
 - Markdown is intended for inspection and downstream RAG chunking.
 - Some PDFs may contain repeated headers, footers, hidden text, or OCR artifacts. Keep raw Docling output and apply any cleanup as a separate step.
 - For RAG, retain the Markdown front matter and later add chunk-level metadata such as section path, page range, and element type.
