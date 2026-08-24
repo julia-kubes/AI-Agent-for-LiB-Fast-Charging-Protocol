@@ -60,23 +60,90 @@ def nonempty_lines(markdown: str) -> list[str]:
     return [line.strip() for line in markdown.splitlines() if line.strip() and line.strip() != "<!-- image -->"]
 
 
+def author_line_score(line: str) -> int:
+    """Score whether a Markdown line resembles a scholarly author byline."""
+    lowered = line.lower()
+    if len(line) < 4 or len(line) > 600:
+        return -100
+    if any(
+        marker in lowered
+        for marker in (
+            "journal homepage",
+            "www.",
+            "http",
+            "contents lists",
+            "abstract",
+            "keywords",
+            "received:",
+            "accepted:",
+            "published:",
+            "university",
+            "department",
+            "laboratory",
+            "institute",
+            "school of",
+            "correspondence",
+            "email",
+        )
+    ):
+        return -100
+
+    words = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*", line)
+    capitalized_words = sum(word[0].isupper() for word in words)
+    score = capitalized_words
+    if "," in line:
+        score += 3
+    if re.search(r"\band\b", line, re.IGNORECASE):
+        score += 1
+    if re.search(r"(?:\*|†|‡|\b[a-z]\b)", line):
+        score += 1
+    return score if capitalized_words >= 2 else -10
+
+
+def title_and_authors(lines: list[str], fallback_title: str) -> tuple[str, str]:
+    """Select the heading most plausibly followed by a scholarly author byline."""
+    headings = [
+        (index, re.sub(r"^#{1,6}\s+", "", line).strip())
+        for index, line in enumerate(lines)
+        if re.match(r"^#{1,6}\s+\S", line)
+    ]
+    best: tuple[int, str, str] | None = None
+    # Article titles and bylines occur in the front matter. Restricting this
+    # search prevents later reference entries and table labels from winning.
+    for heading_index, heading in headings[:3]:
+        for candidate in lines[heading_index + 1 : heading_index + 6]:
+            if candidate.startswith("#"):
+                break
+            score = author_line_score(candidate)
+            # The first plausible line is normally the byline; later lines are
+            # often affiliations, which contain many capitalized place names.
+            if score < 4:
+                continue
+            if best is None or score > best[0]:
+                best = (score, heading, candidate)
+            break
+
+    if best and best[0] >= 4:
+        return best[1], best[2]
+    if headings:
+        return headings[0][1], ""
+    return fallback_title, ""
+
+
 def extract_metadata(
-    markdown: str, pdf_path: Path, page_count: int | None, formula_enrichment: bool
+    markdown: str,
+    pdf_path: Path,
+    source_hash: str,
+    page_count: int | None,
+    formula_enrichment: bool,
 ) -> dict[str, object]:
     """Extract common scholarly metadata from Docling's Markdown, best-effort."""
     lines = nonempty_lines(markdown)
-    title_index = next((i for i, line in enumerate(lines) if re.match(r"^#{1,6}\s+\S", line)), None)
-    title = re.sub(r"^#{1,6}\s+", "", lines[title_index]).strip() if title_index is not None else pdf_path.stem
-
-    authors_raw = ""
-    if title_index is not None:
-        for line in lines[title_index + 1 :]:
-            if not line.startswith("#"):
-                authors_raw = line
-                break
+    title, authors_raw = title_and_authors(lines, pdf_path.stem)
 
     primary_author = authors_raw.split(",", maxsplit=1)[0]
     primary_author = re.sub(r"[*†‡\d]+", "", primary_author).strip()
+    primary_author = re.sub(r"\b[a-z]\b", "", primary_author)
     name_tokens = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ'’-]+", primary_author)
     primary_last_name = name_tokens[-1] if name_tokens else "unknown"
     primary_last_name = unicodedata.normalize("NFKD", primary_last_name).encode("ascii", "ignore").decode().lower()
@@ -99,7 +166,7 @@ def extract_metadata(
         "doi": doi_match.group(1).rstrip(".,;)") if doi_match else None,
         "source_pdf": str(pdf_path.relative_to(ROOT)).replace("\\", "/"),
         "source_size_bytes": pdf_path.stat().st_size,
-        "source_sha256": sha256(pdf_path),
+        "source_sha256": source_hash,
         "page_count": page_count,
         "parser": "docling",
         "parser_version": importlib.metadata.version("docling"),
@@ -125,6 +192,20 @@ def output_path_for(metadata: dict[str, object]) -> Path:
     if f'source_sha256: "{metadata["source_sha256"]}"' in existing:
         return candidate
     return OUTPUT_DIR / f"{paper_id}_{str(metadata['source_sha256'])[:8]}.md"
+
+
+def prior_output(pdf_path: Path, source_hash: str) -> Path | None:
+    """Find an existing Markdown file made from this exact PDF content."""
+    if not OUTPUT_DIR.exists():
+        return None
+    source_pdf = str(pdf_path.relative_to(ROOT)).replace("\\", "/")
+    expected_pdf = f'source_pdf: "{source_pdf}"'
+    expected_hash = f'source_sha256: "{source_hash}"'
+    for markdown_path in OUTPUT_DIR.glob("*.md"):
+        front_matter = markdown_path.read_text(encoding="utf-8", errors="replace")[:4000]
+        if expected_pdf in front_matter and expected_hash in front_matter:
+            return markdown_path
+    return None
 
 
 def build_converter(
@@ -249,10 +330,23 @@ def main() -> int:
         return 0
 
     OUTPUT_DIR.mkdir(exist_ok=True)
+    pending: list[tuple[int, Path, str, Path | None]] = []
+    for number, pdf_path in enumerate(pdfs, start=1):
+        source_hash = sha256(pdf_path)
+        existing = prior_output(pdf_path, source_hash)
+        if existing and not args.force:
+            print(f"[{number}/{len(pdfs)}] Skipping {pdf_path.name}: {existing.name} already exists.")
+        else:
+            pending.append((number, pdf_path, source_hash, existing))
+
+    if not pending:
+        print("Done. All PDFs already have current Docling Markdown files.")
+        return 0
+
     converter = build_converter(args.export_images, args.image_scale, args.enrich_formulas)
     failures = 0
 
-    for number, pdf_path in enumerate(pdfs, start=1):
+    for number, pdf_path, source_hash, previous_output in pending:
         print(f"[{number}/{len(pdfs)}] Converting {pdf_path.name}")
         try:
             document = converter.convert(str(pdf_path)).document
@@ -260,6 +354,7 @@ def main() -> int:
             metadata = extract_metadata(
                 markdown,
                 pdf_path,
+                source_hash,
                 len(getattr(document, "pages", {})),
                 args.enrich_formulas,
             )
@@ -271,6 +366,9 @@ def main() -> int:
             output_path.write_text(yaml_front_matter(metadata) + markdown, encoding="utf-8")
             if args.export_images:
                 export_images(document, metadata, args.image_scale)
+            if args.force and previous_output and previous_output != output_path:
+                previous_output.unlink()
+                print(f"  Replaced outdated metadata file {previous_output.name}")
             print(f"  Wrote {output_path.name}")
         except Exception as error:  # Keep processing the rest of a PDF collection.
             failures += 1
