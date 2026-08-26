@@ -17,6 +17,8 @@ Knowledge Database/
 └── chunk_files/
     └── smith_2024/
         ├── chunks.jsonl
+        ├── quarantine.jsonl
+        ├── quality_report.json
         └── manifest.json
 ```
 
@@ -50,6 +52,14 @@ The defaults are a 350-token final limit and 10% overlap. HybridChunker itself
 does not implement overlap, so the script reserves 35 tokens for the preceding
 chunk and configures HybridChunker with a 315-token base budget. The final `text`
 field never exceeds 350 tokenizer tokens.
+
+Before writing chunks, the script checks for invalid PDF control characters.
+High-confidence NUL characters occurring between mathematical/text tokens are
+converted to `-` and recorded in `quality_report.json`. Chunks containing other
+ambiguous controls are excluded from `chunks.jsonl` and described in
+`quarantine.jsonl` rather than being silently altered or embedded.
+The terminal identifies papers requiring review and prints the corresponding
+report paths after each paper is processed.
 
 Options can be changed explicitly:
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,8 @@ from transformers import AutoTokenizer
 EMBEDDING_MODEL = "Alibaba-NLP/gte-modernbert-base"
 MAX_TOKENS = 350
 OVERLAP_PERCENT = 10.0
+FORBIDDEN_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+MINUS_CONTEXT_CHARS = set("()[]{}")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -120,6 +123,88 @@ def combine_with_overlap(
     return combined, used_overlap, len(combined_ids)
 
 
+def character_context(text: str, index: int, radius: int = 50) -> str:
+    """Return a printable excerpt around a suspicious character."""
+    start = max(0, index - radius)
+    end = min(len(text), index + radius + 1)
+    return text[start:end].replace("\x00", "<NUL>")
+
+
+def nearest_nonspace(text: str, index: int, step: int) -> str | None:
+    position = index + step
+    while 0 <= position < len(text):
+        if not text[position].isspace():
+            return text[position]
+        position += step
+    return None
+
+
+def normalize_extracted_text(
+    text: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Repair high-confidence missing minus signs and report ambiguous controls.
+
+    PDF font mappings sometimes surface a minus sign as U+0000. A NUL is only
+    changed when it occurs in a mathematical/textual token context. Other C0
+    controls are not guessed: the containing chunk is quarantined for review.
+    """
+    characters = list(text)
+    repairs: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+
+    for index, character in enumerate(text):
+        if not FORBIDDEN_CONTROL_RE.fullmatch(character):
+            continue
+        context = character_context(text, index)
+        if character == "\x00":
+            left = nearest_nonspace(text, index, -1)
+            right = nearest_nonspace(text, index, 1)
+            left_is_token = left is not None and (left.isalnum() or left in MINUS_CONTEXT_CHARS)
+            right_is_token = right is not None and (right.isalnum() or right in MINUS_CONTEXT_CHARS)
+            if left_is_token and right_is_token:
+                characters[index] = "-"
+                repairs.append(
+                    {
+                        "character": "U+0000",
+                        "replacement": "-",
+                        "reason": "NUL between mathematical/text tokens; interpreted as minus",
+                        "context": context,
+                    }
+                )
+                continue
+        issues.append(
+            {
+                "character": f"U+{ord(character):04X}",
+                "reason": "ambiguous control character",
+                "context": context,
+            }
+        )
+
+    return "".join(characters), repairs, issues
+
+
+def remaining_control_issues(value: Any, path: str = "$") -> list[dict[str, Any]]:
+    """Find forbidden controls anywhere in a JSON-compatible chunk record."""
+    issues: list[dict[str, Any]] = []
+    if isinstance(value, str):
+        for match in FORBIDDEN_CONTROL_RE.finditer(value):
+            issues.append(
+                {
+                    "field": path,
+                    "character": f"U+{ord(match.group()):04X}",
+                    "reason": "forbidden control character remains after normalization",
+                    "context": character_context(value, match.start()),
+                }
+            )
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            issues.extend(remaining_control_issues(child, f"{path}.{key}"))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            issues.extend(remaining_control_issues(child, f"{path}[{index}]"))
+    return issues
+
+
 def json_safe(value: Any) -> Any:
     """Convert Pydantic metadata and other supported objects to JSON values."""
     if hasattr(value, "export_json_dict"):
@@ -157,11 +242,39 @@ def chunk_document(
     document = DoclingDocument.load_from_json(docling_path)
     chunks = list(chunker.chunk(document))
     records: list[dict[str, Any]] = []
+    quarantined: list[dict[str, Any]] = []
+    repair_events: list[dict[str, Any]] = []
     previous_text = ""
 
     for index, chunk in enumerate(chunks, start=1):
-        content_text = chunk.text
-        contextualized_text = chunker.contextualize(chunk=chunk)
+        chunk_id = f"{record_id}::chunk::{index:04d}"
+        content_text, content_repairs, content_issues = normalize_extracted_text(chunk.text)
+        contextualized_text, context_repairs, context_issues = normalize_extracted_text(
+            chunker.contextualize(chunk=chunk)
+        )
+        for field, events in (
+            ("content_text", content_repairs),
+            ("contextualized_text", context_repairs),
+        ):
+            for event in events:
+                repair_events.append({"chunk_id": chunk_id, "field": field, **event})
+        text_issues = [
+            *({"field": "content_text", **issue} for issue in content_issues),
+            *({"field": "contextualized_text", **issue} for issue in context_issues),
+        ]
+        if text_issues:
+            quarantined.append(
+                {
+                    "chunk_id": chunk_id,
+                    "record_id": record_id,
+                    "chunk_index": index,
+                    "reason": "ambiguous extracted control characters",
+                    "issues": text_issues,
+                }
+            )
+            previous_text = ""
+            continue
+
         requested_overlap = trim_token_tail(previous_text, overlap_tokens, raw_tokenizer)
         embedding_text, used_overlap, token_count = combine_with_overlap(
             requested_overlap,
@@ -170,31 +283,56 @@ def chunk_document(
             raw_tokenizer,
         )
         docling_metadata = json_safe(chunk.meta)
-        chunk_id = f"{record_id}::chunk::{index:04d}"
-        records.append(
-            {
-                "schema_version": 1,
-                "chunk_id": chunk_id,
-                "record_id": record_id,
-                "chunk_index": index,
-                "text": embedding_text,
-                "content_text": content_text,
-                "contextualized_text": contextualized_text,
-                "overlap_text": used_overlap or None,
-                "token_count": token_count,
-                "content_sha256": sha256_bytes(embedding_text.encode("utf-8")),
-                "metadata": {
-                    **document_metadata,
-                    "page_numbers": page_numbers(docling_metadata),
-                    "docling": docling_metadata,
-                },
-            }
-        )
+        record = {
+            "schema_version": 1,
+            "chunk_id": chunk_id,
+            "record_id": record_id,
+            "chunk_index": index,
+            "text": embedding_text,
+            "content_text": content_text,
+            "contextualized_text": contextualized_text,
+            "overlap_text": used_overlap or None,
+            "token_count": token_count,
+            "content_sha256": sha256_bytes(embedding_text.encode("utf-8")),
+            "metadata": {
+                **document_metadata,
+                "page_numbers": page_numbers(docling_metadata),
+                "docling": docling_metadata,
+            },
+        }
+        record_issues = remaining_control_issues(record)
+        if record_issues:
+            quarantined.append(
+                {
+                    "chunk_id": chunk_id,
+                    "record_id": record_id,
+                    "chunk_index": index,
+                    "reason": "control characters remain in chunk record",
+                    "issues": record_issues,
+                }
+            )
+            previous_text = ""
+            continue
+        records.append(record)
         previous_text = content_text
 
     paper_dir = output_dir / record_id
     paper_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(paper_dir / "chunks.jsonl", records)
+    write_jsonl(paper_dir / "quarantine.jsonl", quarantined)
+    write_json(
+        paper_dir / "quality_report.json",
+        {
+            "schema_version": 1,
+            "record_id": record_id,
+            "source_chunk_count": len(chunks),
+            "written_chunk_count": len(records),
+            "quarantined_chunk_count": len(quarantined),
+            "automatic_repair_count": len(repair_events),
+            "automatic_repairs": repair_events,
+            "quarantine_file": "quarantine.jsonl",
+        },
+    )
     write_json(
         paper_dir / "manifest.json",
         {
@@ -208,9 +346,24 @@ def chunk_document(
             "max_tokens": max_tokens,
             "overlap_tokens": overlap_tokens,
             "chunk_count": len(records),
+            "source_chunk_count": len(chunks),
+            "quarantined_chunk_count": len(quarantined),
+            "automatic_repair_count": len(repair_events),
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
         },
     )
+    if quarantined:
+        print(
+            f"    REVIEW REQUIRED: {len(quarantined)} quarantined chunk(s); "
+            f"see {paper_dir / 'quality_report.json'} and {paper_dir / 'quarantine.jsonl'}"
+        )
+    elif repair_events:
+        print(
+            f"    REVIEW RECOMMENDED: {len(repair_events)} automatic repair event(s); "
+            f"see {paper_dir / 'quality_report.json'}"
+        )
+    else:
+        print("    Quality check passed: no control-character repairs or quarantines.")
     return len(records)
 
 
