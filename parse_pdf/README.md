@@ -35,20 +35,21 @@ Knowledge Database/
 ├── article-1.pdf
 ├── article-2.pdf
 ├── MD_Files/
-│   ├── trentadue_2018.md
-│   └── smith_2024.md
+│   ├── pdf_a1b2c3d4e5f6a7b8.md
+│   └── doi_10.1016_j.jpowsour.2014.10.050.md
 ├── Docling_Files/           # Lossless DoclingDocument serialization
-│   ├── trentadue_2018.json
-│   └── smith_2024.json
+│   ├── pdf_a1b2c3d4e5f6a7b8.json
+│   └── doi_10.1016_j.jpowsour.2014.10.050.json
 └── Image_Files/              # Created only with --export-images
-    └── trentadue_2018/
+    └── doi_10.1016_j.jpowsour.2014.10.050/
         ├── figure_001.png
         ├── table_001.png
         └── manifest.json
 ```
 
 Each Markdown file begins with YAML metadata, including:
-- paper_id — derived as primary-author-last-name_publication-year
+- paper_id — derived from the DOI when detected, or from the PDF's SHA-256 checksum otherwise
+- citation_key — derived as primary-author-last-name_publication-year
 - title and raw author string
 - publication year/date, when detected
 - DOI, when detected
@@ -64,9 +65,16 @@ Docling chunkers such as `HybridChunker`.
 
 Example output filename:
 ```
-MD_Files/trentadue_2018.md
+MD_Files/doi_10.1016_j.jpowsour.2014.10.050.md
 ```
-If two papers have the same primary-author surname and publication year, the converter adds a short source-hash suffix to the filename to prevent overwriting a paper.
+DOI-based IDs are lowercased and made filename-safe while the original DOI is
+preserved in metadata. If no DOI is detected, the converter uses the first 16
+characters of the PDF's SHA-256 checksum, for example:
+```
+MD_Files/pdf_a1b2c3d4e5f6a7b8.md
+```
+On the rare chance that an output name already belongs to different PDF
+content, the converter adds a short source-hash suffix to prevent overwriting.
 
 ## Re-run conversion
 
