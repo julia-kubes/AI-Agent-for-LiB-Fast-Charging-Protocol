@@ -183,6 +183,34 @@ def normalize_extracted_text(
     return "".join(characters), repairs, issues
 
 
+def load_corrections(path: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load optional, document-scoped corrections verified against source PDFs."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != 1 or not isinstance(data.get("records"), dict):
+        raise ValueError(f"Invalid corrections file: {path}")
+    return data["records"]
+
+
+def apply_verified_corrections(
+    text: str,
+    entries: list[dict[str, Any]],
+    application_counts: list[int],
+) -> str:
+    """Apply exact replacements; broad character guesses remain quarantined."""
+    for index, entry in enumerate(entries):
+        find = entry.get("find")
+        replacement = entry.get("replace")
+        if not isinstance(find, str) or not find or not isinstance(replacement, str):
+            raise ValueError("Each correction requires non-empty 'find' and string 'replace' values")
+        occurrences = text.count(find)
+        if occurrences:
+            text = text.replace(find, replacement)
+            application_counts[index] += occurrences
+    return text
+
+
 def remaining_control_issues(value: Any, path: str = "$") -> list[dict[str, Any]]:
     """Find forbidden controls anywhere in a JSON-compatible chunk record."""
     issues: list[dict[str, Any]] = []
@@ -233,6 +261,7 @@ def chunk_document(
     max_tokens: int,
     overlap_tokens: int,
     model_id: str,
+    corrections: dict[str, list[dict[str, Any]]],
 ) -> int:
     record_id = docling_path.stem
     markdown_path = markdown_dir / f"{record_id}.md"
@@ -244,14 +273,20 @@ def chunk_document(
     records: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     repair_events: list[dict[str, Any]] = []
+    correction_entries = corrections.get(record_id, [])
+    correction_application_counts = [0] * len(correction_entries)
     previous_text = ""
 
     for index, chunk in enumerate(chunks, start=1):
         chunk_id = f"{record_id}::chunk::{index:04d}"
-        content_text, content_repairs, content_issues = normalize_extracted_text(chunk.text)
-        contextualized_text, context_repairs, context_issues = normalize_extracted_text(
-            chunker.contextualize(chunk=chunk)
+        raw_content_text = apply_verified_corrections(
+            chunk.text, correction_entries, correction_application_counts
         )
+        raw_contextualized_text = apply_verified_corrections(
+            chunker.contextualize(chunk=chunk), correction_entries, correction_application_counts
+        )
+        content_text, content_repairs, content_issues = normalize_extracted_text(raw_content_text)
+        contextualized_text, context_repairs, context_issues = normalize_extracted_text(raw_contextualized_text)
         for field, events in (
             ("content_text", content_repairs),
             ("contextualized_text", context_repairs),
@@ -330,6 +365,19 @@ def chunk_document(
             "quarantined_chunk_count": len(quarantined),
             "automatic_repair_count": len(repair_events),
             "automatic_repairs": repair_events,
+            "verified_corrections": [
+                {
+                    "find": entry["find"],
+                    "replace": entry["replace"],
+                    "source_page": entry.get("source_page"),
+                    "note": entry.get("note"),
+                    "application_count": correction_application_counts[index],
+                }
+                for index, entry in enumerate(correction_entries)
+            ],
+            "unmatched_verified_correction_count": sum(
+                count == 0 for count in correction_application_counts
+            ),
             "quarantine_file": "quarantine.jsonl",
         },
     )
@@ -352,15 +400,27 @@ def chunk_document(
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
         },
     )
+    verified_application_count = sum(correction_application_counts)
+    unmatched_correction_count = sum(count == 0 for count in correction_application_counts)
     if quarantined:
         print(
             f"    REVIEW REQUIRED: {len(quarantined)} quarantined chunk(s); "
             f"see {paper_dir / 'quality_report.json'} and {paper_dir / 'quarantine.jsonl'}"
         )
+    elif unmatched_correction_count:
+        print(
+            f"    REVIEW REQUIRED: {unmatched_correction_count} verified correction(s) did not match; "
+            f"see {paper_dir / 'quality_report.json'}"
+        )
     elif repair_events:
         print(
             f"    REVIEW RECOMMENDED: {len(repair_events)} automatic repair event(s); "
             f"see {paper_dir / 'quality_report.json'}"
+        )
+    elif verified_application_count:
+        print(
+            f"    Quality check passed: applied {verified_application_count} verified correction(s); "
+            "no quarantines."
         )
     else:
         print("    Quality check passed: no control-character repairs or quarantines.")
@@ -379,6 +439,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
     parser.add_argument("--overlap-percent", type=float, default=OVERLAP_PERCENT)
     parser.add_argument("--fail-fast", action="store_true", help="stop after the first failed document")
+    parser.add_argument(
+        "--corrections",
+        type=Path,
+        help="verified corrections JSON (default: <root>/corrections.json)",
+    )
+    parser.add_argument(
+        "--record",
+        action="append",
+        dest="records",
+        help="process only this record ID; repeat to select multiple records",
+    )
     return parser.parse_args()
 
 
@@ -388,6 +459,8 @@ def main() -> int:
     docling_dir = root / "Docling_Files"
     markdown_dir = root / "MD_Files"
     output_dir = root / "chunk_files"
+    corrections_path = (args.corrections or (root / "corrections.json")).resolve()
+    corrections = load_corrections(corrections_path)
 
     if args.max_tokens < 1:
         raise SystemExit("--max-tokens must be positive")
@@ -397,6 +470,12 @@ def main() -> int:
         raise SystemExit(f"Docling input directory not found: {docling_dir}")
 
     sources = sorted(docling_dir.glob("*.json"), key=lambda path: path.name.lower())
+    if args.records:
+        selected = set(args.records)
+        sources = [source for source in sources if source.stem in selected]
+        missing = selected - {source.stem for source in sources}
+        if missing:
+            raise SystemExit(f"Requested record(s) not found: {', '.join(sorted(missing))}")
     if not sources:
         raise SystemExit(f"No Docling JSON files found in {docling_dir}")
 
@@ -418,6 +497,7 @@ def main() -> int:
                 args.max_tokens,
                 overlap_tokens,
                 args.model,
+                corrections,
             )
             print(f"[{number}/{len(sources)}] {source.name}: wrote {count} chunks")
         except Exception as error:

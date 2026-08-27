@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Document-scoped text corrections verified visually against the source PDFs.",
+  "records": {
+    "abdelmonem_2015": [
+      {"find": "\u0015", "replace": "≥", "source_page": 1, "note": "Greater-than-or-equal symbol in discharge-time range."},
+      {"find": "\u000e", "replace": "°", "source_page": [3, 7, 8], "note": "Degree symbol in temperatures and the 45-degree impedance slope."},
+      {"find": "\u000f", "replace": "•", "source_page": [3, 4, 7], "note": "Bulleted list marker."},
+      {"find": " \u0013 a", "replace": "á", "source_page": 12, "note": "Acute-accented a in Anseán, Fernández, and Sánchez."},
+      {"find": " \u0012 a", "replace": "à", "source_page": 12, "note": "Grave-accented a in Cinà."}
+    ],
+    "ansean_2012": [
+      {"find": "\u000f", "replace": "•", "source_page": 1, "note": "Highlights bullet marker."},
+      {"find": "\u000e", "replace": "°", "source_page": [2, 5, 6], "note": "Degree symbol in temperatures."},
+      {"find": "\u0006", "replace": "±", "source_page": 3, "note": "Plus-minus symbol in capacity uncertainty."},
+      {"find": " \u0013 c", "replace": "ć", "source_page": 7, "note": "Acute-accented c in Jugović and Uskoković."}
+    ],
+    "li_2001": [
+      {"find": "\u0015", "replace": "≥", "source_page": 2, "note": "Greater-than-or-equal symbol in reagent purity."},
+      {"find": "\u000e", "replace": "°", "source_page": 6, "note": "Degree symbol in diffraction angle."}
+    ],
+    "march_2015": [
+      {"find": "\u000e", "replace": "°", "source_page": [6, 7], "note": "Degree symbol in temperatures."}
+    ],
+    "ouyang_2015": [
+      {"find": "\u000f", "replace": "•", "source_page": 1, "note": "Highlights bullet marker."},
+      {"find": "\u000e", "replace": "°", "source_page": [1, 2, 3, 4, 11], "note": "Degree symbol in temperatures."},
+      {"find": " \u0013 a", "replace": "á", "source_page": 12, "note": "Acute-accented a in Novák."},
+      {"find": " \u0013 o", "replace": "ó", "source_page": 12, "note": "Acute-accented o in López."}
+    ]
+  }
+}
+

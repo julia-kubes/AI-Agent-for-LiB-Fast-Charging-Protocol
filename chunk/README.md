@@ -10,6 +10,7 @@ Place the script in the collection root beside `Docling_Files` and `MD_Files`:
 ```text
 Knowledge Database/
 ├── create-chunks.py
+├── corrections.json
 ├── Docling_Files/
 │   └── smith_2024.json
 ├── MD_Files/
@@ -61,10 +62,22 @@ ambiguous controls are excluded from `chunks.jsonl` and described in
 The terminal identifies papers requiring review and prints the corresponding
 report paths after each paper is processed.
 
+`corrections.json` contains document-scoped replacements that were manually
+verified against source PDF pages. Keep it beside `create-chunks.py`; applied
+and unmatched corrections are audited in each `quality_report.json`. Add a new
+entry only after checking the original PDF—unknown controls will continue to be
+quarantined instead of guessed.
+
 Options can be changed explicitly:
 
 ```powershell
 python create-chunks.py --max-tokens 350 --overlap-percent 10
+```
+
+To regenerate only selected papers, repeat `--record`:
+
+```powershell
+python create-chunks.py --record smith_2024 --record jones_2025
 ```
 
 When running the repository copy from another directory, specify the collection:
