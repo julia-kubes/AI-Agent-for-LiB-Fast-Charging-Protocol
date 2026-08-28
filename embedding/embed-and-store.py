@@ -6,6 +6,9 @@ The default input layout is:
 
 Database credentials are read from DATABASE_URL. Use --dry-run to validate the
 input files without loading the model or connecting to PostgreSQL.
+
+Embeddings are cached locally before database upload. If an upload is
+interrupted, rerun with --store-only to reuse the cache without re-embedding.
 """
 
 from __future__ import annotations
@@ -66,6 +69,23 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="validate and count chunks without loading the model or using the database",
+    )
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
+        "--embed-only",
+        action="store_true",
+        help="create/replace the local embedding cache without using PostgreSQL",
+    )
+    modes.add_argument(
+        "--store-only",
+        action="store_true",
+        help="upload a previously created cache without running the embedding model",
+    )
+    parser.add_argument(
+        "--embedding-cache",
+        type=Path,
+        default=Path.cwd() / "embedding_cache.npz",
+        help="local NumPy cache (default: ./embedding_cache.npz)",
     )
     parser.add_argument(
         "--query",
@@ -227,32 +247,101 @@ def encode(model: Any, texts: Sequence[str], batch_size: int) -> Any:
     )
 
 
+def save_embedding_cache(
+    path: Path,
+    chunks: Sequence[dict[str, Any]],
+    embeddings: Any,
+    model_name: str,
+    dimensions: int,
+) -> None:
+    import numpy as np
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        path,
+        embeddings=embeddings,
+        chunk_ids=np.asarray([chunk["chunk_id"] for chunk in chunks]),
+        content_sha256=np.asarray([chunk["content_sha256"] for chunk in chunks]),
+        model=np.asarray(model_name),
+        dimensions=np.asarray(dimensions),
+    )
+    print(f"Saved reusable embedding cache: {path}")
+
+
+def load_embedding_cache(
+    path: Path,
+    chunks: Sequence[dict[str, Any]],
+    expected_model: str,
+) -> tuple[Any, int]:
+    import numpy as np
+
+    if not path.is_file():
+        raise SystemExit(
+            f"Embedding cache not found: {path}. Run without --store-only or use --embed-only first."
+        )
+    with np.load(path, allow_pickle=False) as cache:
+        embeddings = cache["embeddings"]
+        cached_ids = cache["chunk_ids"].tolist()
+        cached_hashes = cache["content_sha256"].tolist()
+        cached_model = str(cache["model"].item())
+        dimensions = int(cache["dimensions"].item())
+
+    current_ids = [chunk["chunk_id"] for chunk in chunks]
+    current_hashes = [chunk["content_sha256"] for chunk in chunks]
+    if cached_model != expected_model:
+        raise SystemExit(
+            f"Cache model mismatch: cache uses {cached_model}, requested {expected_model}."
+        )
+    if cached_ids != current_ids or cached_hashes != current_hashes:
+        raise SystemExit(
+            "Embedding cache does not match the current chunks. Re-embed to refresh the cache."
+        )
+    if embeddings.shape != (len(chunks), dimensions):
+        raise SystemExit(f"Invalid embedding cache shape: {embeddings.shape}")
+    print(f"Loaded {len(chunks)} embeddings from cache: {path}")
+    return embeddings, dimensions
+
+
 def ingest(args: argparse.Namespace, chunks: Sequence[dict[str, Any]]) -> None:
-    database_url = args.database_url or os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise SystemExit(
-            "DATABASE_URL is not set. See the README for the PostgreSQL connection example."
-        )
-
     psycopg, register_vector, Jsonb, SentenceTransformer = load_dependencies()
-    print(f"Loading embedding model: {args.model}")
-    model_options = {"device": args.device} if args.device else {}
-    model = SentenceTransformer(args.model, **model_options)
-    dimensions = model.get_sentence_embedding_dimension()
-    if dimensions != DEFAULT_DIMENSIONS and args.model == DEFAULT_MODEL:
-        raise SystemExit(
-            f"Expected {DEFAULT_DIMENSIONS} dimensions for {DEFAULT_MODEL}, got {dimensions}."
+    cache_path = args.embedding_cache.resolve()
+    if args.store_only:
+        embeddings, dimensions = load_embedding_cache(cache_path, chunks, args.model)
+    else:
+        print(f"Loading embedding model: {args.model}")
+        model_options = {"device": args.device} if args.device else {}
+        model = SentenceTransformer(args.model, **model_options)
+        dimension_getter = getattr(model, "get_embedding_dimension", None)
+        dimensions = (
+            dimension_getter()
+            if dimension_getter is not None
+            else model.get_sentence_embedding_dimension()
         )
-
-    print("Connecting to PostgreSQL...")
-    connection = connect(database_url, psycopg, register_vector)
-    try:
-        ensure_table(connection, args.schema, args.table, dimensions, psycopg)
+        if dimensions != DEFAULT_DIMENSIONS and args.model == DEFAULT_MODEL:
+            raise SystemExit(
+                f"Expected {DEFAULT_DIMENSIONS} dimensions for {DEFAULT_MODEL}, got {dimensions}."
+            )
         print(f"Encoding {len(chunks)} chunks in batches of {args.batch_size}...")
         embeddings = encode(model, [chunk["text"] for chunk in chunks], args.batch_size)
         if embeddings.shape != (len(chunks), dimensions):
             raise SystemExit(f"Unexpected embedding array shape: {embeddings.shape}")
+        save_embedding_cache(cache_path, chunks, embeddings, args.model, dimensions)
 
+    if args.embed_only:
+        print("Embedding complete; database upload skipped (--embed-only).")
+        return
+
+    database_url = args.database_url or os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise SystemExit(
+            "DATABASE_URL is not set. The embedding cache was saved; set the connection and "
+            "rerun with --store-only."
+        )
+
+    print("Connecting to PostgreSQL with a fresh connection...")
+    connection = connect(database_url, psycopg, register_vector)
+    try:
+        ensure_table(connection, args.schema, args.table, dimensions, psycopg)
         sql = psycopg.sql
         table = sql.Identifier(args.schema, args.table)
         statement = sql.SQL(

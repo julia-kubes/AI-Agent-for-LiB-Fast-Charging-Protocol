@@ -78,6 +78,26 @@ every actual embedding run.
 python path\to\embed-and-store.py --chunks-root path\to\chunk_files
 ```
 
+The script now finishes embedding and saves `embedding_cache.npz` before it
+opens the PostgreSQL connection. If Neon or the network disconnects during
+storage, retry only the fast upload step:
+
+```powershell
+python .\embed-and-store.py --store-only
+```
+
+You can also run the two stages explicitly:
+
+```powershell
+python .\embed-and-store.py --embed-only
+python .\embed-and-store.py --store-only
+```
+
+The cache records the model, chunk IDs, and content hashes. `--store-only`
+refuses to upload if the chunk files changed after the cache was created; in
+that case, run `--embed-only` again. The cache is a generated local file and
+should not be committed to Git.
+
 Rerun this command after the parsing and chunking pipeline produces new or
 updated chunk files. Existing chunk IDs are updated and new chunk IDs are added,
 so the database is not filled with duplicate copies.
@@ -173,6 +193,8 @@ Deletion should be an explicit, reviewed operation.
   `CREATE EXTENSION vector` in the target database.
 - **Connection refused**: confirm PostgreSQL is running and that `HOST` and
   `PORT` in `DATABASE_URL` are correct.
+- **SSL connection closed unexpectedly**: the completed embeddings remain in
+  `embedding_cache.npz`; restore the connection and run `--store-only`.
 - **Out of memory**: use a smaller `--batch-size` and `--device cpu`.
 - **Dimension mismatch**: keep one embedding model per vector column/index. A
   different model may require a new table or migration.
