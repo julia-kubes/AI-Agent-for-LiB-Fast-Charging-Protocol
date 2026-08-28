@@ -211,6 +211,27 @@ def apply_verified_corrections(
     return text
 
 
+def apply_verified_corrections_to_value(
+    value: Any,
+    entries: list[dict[str, Any]],
+    application_counts: list[int],
+) -> Any:
+    """Apply verified replacements recursively to JSON-compatible metadata."""
+    if isinstance(value, str):
+        return apply_verified_corrections(value, entries, application_counts)
+    if isinstance(value, dict):
+        return {
+            key: apply_verified_corrections_to_value(child, entries, application_counts)
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            apply_verified_corrections_to_value(child, entries, application_counts)
+            for child in value
+        ]
+    return value
+
+
 def remaining_control_issues(value: Any, path: str = "$") -> list[dict[str, Any]]:
     """Find forbidden controls anywhere in a JSON-compatible chunk record."""
     issues: list[dict[str, Any]] = []
@@ -275,6 +296,9 @@ def chunk_document(
     repair_events: list[dict[str, Any]] = []
     correction_entries = corrections.get(record_id, [])
     correction_application_counts = [0] * len(correction_entries)
+    document_metadata = apply_verified_corrections_to_value(
+        document_metadata, correction_entries, correction_application_counts
+    )
     previous_text = ""
 
     for index, chunk in enumerate(chunks, start=1):

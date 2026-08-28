@@ -27,7 +27,29 @@
       {"find": "\u000e", "replace": "°", "source_page": [1, 2, 3, 4, 11], "note": "Degree symbol in temperatures."},
       {"find": " \u0013 a", "replace": "á", "source_page": 12, "note": "Acute-accented a in Novák."},
       {"find": " \u0013 o", "replace": "ó", "source_page": 12, "note": "Acute-accented o in López."}
+    ],
+    "c_2019": [
+      {"find": "\u0000 50 \u000e C", "replace": "-50 °C", "source_page": 3, "note": "Negative 50 degrees Celsius."},
+      {"find": "\u0018", "replace": "~", "source_page": [1, 2, 3, 5, 6, 9, 13, 15, 16, 17], "note": "Approximation symbol in temperatures, times, cycle counts, energies, and percentages."},
+      {"find": "\u000e", "replace": "°", "source_page": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17], "note": "Degree symbol in temperatures and heating rates."}
+    ],
+    "guo_2014": [
+      {"find": "\u000f", "replace": "•", "source_page": 1, "note": "Highlights bullet marker."},
+      {"find": "\u0014", "replace": "≤", "source_page": 5, "note": "Less-than-or-equal symbol in current and voltage constraints."},
+      {"find": "\u0015", "replace": "≥", "source_page": 6, "note": "Greater-than-or-equal symbol in the charging-time constraint."}
+    ],
+    "guo_2014_5dc1c562": [
+      {"find": "\u000f", "replace": "•", "source_page": 1, "note": "Highlights bullet marker."},
+      {"find": "\u0014", "replace": "≤", "source_page": 5, "note": "Less-than-or-equal symbol in current and voltage constraints."},
+      {"find": "\u0015", "replace": "≥", "source_page": 6, "note": "Greater-than-or-equal symbol in the charging-time constraint."}
+    ],
+    "tomaszewska_2019": [
+      {"find": "\u0000 25 + C", "replace": "-25 °C", "source_page": 8, "note": "Negative 25 degrees Celsius."},
+      {"find": "\u0003", "replace": "*", "source_page": 9, "note": "Superscript reference-concentration asterisk."},
+      {"find": "\u000f", "replace": "•", "source_page": 21, "note": "Conclusion bullet marker."},
+      {"find": " \u0013 ee", "replace": "ée", "source_page": [22, 24], "note": "Accented ending in Ivers-Tiffée."},
+      {"find": " \u0013 e", "replace": "é", "source_page": [23, 27], "note": "Acute-accented e in Barré, Gérard, and Hémery."},
+      {"find": " \u0013 a", "replace": "á", "source_page": [23, 24, 26], "note": "Acute-accented a in Novák, Anseán, and González."}
     ]
   }
 }
-
