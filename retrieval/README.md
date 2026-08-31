@@ -4,10 +4,11 @@
 database created by `embedding/embed-and-store.py`:
 
 1. Embed a plain-language query with `Alibaba-NLP/gte-modernbert-base`.
-2. Retrieve the 30 nearest chunks using pgvector cosine distance.
-3. Score each query-chunk pair with
+2. Exclude reference sections and, by default, introduction sections.
+3. Retrieve the 30 nearest eligible chunks using pgvector cosine distance.
+4. Score each query-chunk pair with
    `Alibaba-NLP/gte-reranker-modernbert-base`.
-4. Return the eight highest-scoring chunks.
+5. Return the eight highest-scoring chunks.
 
 The script is read-only. It does not update database rows or stored embeddings.
 
@@ -63,6 +64,24 @@ shows:
 
 Reranker scores are useful for ordering candidates but are not calibrated
 probabilities. A score of `0.8` should not be interpreted as 80% confidence.
+
+## Section filtering
+
+Reference-like sections are always excluded before vector top-30 retrieval.
+The denylist recognizes normalized headings such as `References`,
+`Bibliography`, and `Works Cited`, including numbered or Roman-numeral forms.
+
+Introduction sections are also excluded before vector retrieval by default.
+Include them for a particular query with:
+
+```powershell
+python .\retrieval.py "your query" --include-intro
+```
+
+Filtering occurs before candidate selection, so the reranker still receives up
+to 30 eligible chunks. Chunks whose section heading is missing remain eligible.
+The filters do not delete or modify database rows and do not require
+re-embedding.
 
 ## Source diversity
 
@@ -123,6 +142,7 @@ Common options:
 | `--candidates` | 30 | Number of chunks retrieved by pgvector |
 | `--top-k` | 8 | Number of reranked chunks returned |
 | `--max-per-paper` | none | Optional per-paper diversity cap |
+| `--include-intro` | off | Include introduction chunks; references remain excluded |
 | `--batch-size` | 16 | Reranker inference batch size |
 | `--max-length` | 1024 | Query-plus-chunk reranker token limit |
 | `--device` | automatic | Force `cpu`, `cuda`, or another supported device |

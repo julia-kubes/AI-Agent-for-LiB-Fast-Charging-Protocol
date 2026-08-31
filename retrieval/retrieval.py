@@ -2,11 +2,14 @@
 
 The retrieval funnel is:
 
-    query -> GTE query embedding -> top 30 pgvector candidates
+    query -> GTE query embedding -> section filtering
+          -> top 30 pgvector candidates
           -> GTE cross-encoder reranker -> top 8 results
 
 DATABASE_URL supplies the PostgreSQL/Neon connection string. This script is
-read-only: it does not update chunks, metadata, or stored embeddings.
+read-only: it does not update chunks, metadata, or stored embeddings. Reference
+sections are always excluded. Introduction sections are excluded unless
+--include-intro is supplied.
 """
 
 from __future__ import annotations
@@ -75,6 +78,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "optional diversity cap on results from one paper; for example, "
             "--max-per-paper 2"
+        ),
+    )
+    parser.add_argument(
+        "--include-intro",
+        action="store_true",
+        help=(
+            "include introduction chunks in vector retrieval; introductions "
+            "are excluded by default"
         ),
     )
     parser.add_argument(
@@ -158,8 +169,27 @@ def retrieve_candidates(
     query_embedding: Any,
     embedding_model: str,
     candidate_count: int,
+    include_intro: bool,
 ) -> list[Candidate]:
     table = psycopg.sql.Identifier(schema_name, table_name)
+    introduction_filter = psycopg.sql.SQL("")
+    if not include_intro:
+        introduction_filter = psycopg.sql.SQL(
+            """
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                    COALESCE(
+                        jsonb_extract_path(c.metadata, 'docling', 'headings'),
+                        '[]'::jsonb
+                    )
+                ) AS heading(value)
+                WHERE regexp_replace(
+                    lower(heading.value), '[^a-z0-9]+', '', 'g'
+                ) ~ '^([0-9]+|[ivxlcdm]+)?introduction$'
+            )
+            """
+        )
     statement = psycopg.sql.SQL(
         """
         SELECT
@@ -179,10 +209,23 @@ def retrieve_candidates(
         LEFT JOIN public.paper_metadata AS p
             ON p.record_id = c.record_id
         WHERE c.embedding_model = %s
+          AND NOT EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements_text(
+                  COALESCE(
+                      jsonb_extract_path(c.metadata, 'docling', 'headings'),
+                      '[]'::jsonb
+                  )
+              ) AS heading(value)
+              WHERE regexp_replace(
+                  lower(heading.value), '[^a-z0-9]+', '', 'g'
+              ) ~ '^([0-9]+|[ivxlcdm]+)?(references|bibliography|workscited)$'
+          )
+          {}
         ORDER BY c.embedding <=> %s
         LIMIT %s
         """
-    ).format(table)
+    ).format(table, introduction_filter)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -255,11 +298,19 @@ def rerank(
     return selected
 
 
-def result_payload(query: str, candidates: Sequence[Candidate]) -> dict[str, Any]:
+def result_payload(
+    query: str,
+    candidates: Sequence[Candidate],
+    include_intro: bool,
+) -> dict[str, Any]:
     return {
         "query": query,
         "result_count": len(candidates),
         "distinct_paper_count": len({candidate.record_id for candidate in candidates}),
+        "section_filters": {
+            "references": "excluded",
+            "introduction": "included" if include_intro else "excluded",
+        },
         "results": [
             {"reranker_rank": rank, **asdict(candidate)}
             for rank, candidate in enumerate(candidates, start=1)
@@ -267,8 +318,14 @@ def result_payload(query: str, candidates: Sequence[Candidate]) -> dict[str, Any
     }
 
 
-def print_results(query: str, candidates: Sequence[Candidate]) -> None:
+def print_results(
+    query: str,
+    candidates: Sequence[Candidate],
+    include_intro: bool,
+) -> None:
     print(f"\nTop {len(candidates)} reranked results for: {query}\n")
+    intro_status = "included" if include_intro else "excluded"
+    print(f"Section filters: references=excluded, introduction={intro_status}")
     print(f"Distinct papers represented: {len({c.record_id for c in candidates})}\n")
     for rank, candidate in enumerate(candidates, start=1):
         preview = " ".join(candidate.text.split())
@@ -324,6 +381,7 @@ def main() -> int:
             query_embedding=query_embedding,
             embedding_model=args.embedding_model,
             candidate_count=args.candidates,
+            include_intro=args.include_intro,
         )
     except Exception as error:
         raise SystemExit(f"Vector retrieval failed: {error}") from error
@@ -354,9 +412,14 @@ def main() -> int:
     )
 
     if args.json:
-        print(json.dumps(result_payload(args.query, results), indent=2))
+        print(
+            json.dumps(
+                result_payload(args.query, results, args.include_intro),
+                indent=2,
+            )
+        )
     else:
-        print_results(args.query, results)
+        print_results(args.query, results, args.include_intro)
     return 0
 
 
