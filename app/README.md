@@ -63,3 +63,9 @@ Do not pass `--demo`, and set `APP_DEMO_MODE=false` for the UI.
 The first live retrieval loads the GTE embedding model and reranker and can take
 longer while their files are downloaded and cached. The adapter uses
 parameterized SQL and short-lived database connections.
+
+Final answers have a 3,000-token ceiling by default. If Parley truncates or
+returns malformed final JSON, the agent requests one concise JSON-only
+regeneration and then fails clearly rather than retrying without a bound.
+
+Implementation bugs and fixes are recorded in `DEVELOPMENT_LOG.md`.

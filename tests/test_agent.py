@@ -5,6 +5,7 @@ import unittest
 from app.agent import ResearchAgent
 from app.config import Settings
 from app.demo import DemoLLM, DemoRetrieval
+from app.schemas import ModelReply, Usage
 
 
 def settings() -> Settings:
@@ -38,7 +39,52 @@ class ResearchAgentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot be empty"):
             ResearchAgent(DemoRetrieval(), DemoLLM(), settings()).answer("  ")
 
+    def test_truncated_final_answer_is_repaired_once(self) -> None:
+        class TruncatedThenRepairedLLM:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.demo = DemoLLM()
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return self.demo.complete(messages, tools)
+                if self.calls == 2:
+                    return ModelReply(
+                        '{"summary":"truncated',
+                        usage=Usage(100, 1500),
+                        finish_reason="length",
+                    )
+                return self.demo.complete(messages, tools)
+
+        llm = TruncatedThenRepairedLLM()
+        result = ResearchAgent(DemoRetrieval(), llm, settings()).answer(
+            "What factors should constrain a fast-charging protocol?"
+        )
+
+        self.assertEqual(llm.calls, 3)
+        self.assertEqual(result.agent_rounds, 3)
+        self.assertEqual(result.validation.status, "pass")
+
+    def test_invalid_repair_fails_after_one_attempt(self) -> None:
+        class AlwaysInvalidFinalLLM:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.demo = DemoLLM()
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return self.demo.complete(messages, tools)
+                return ModelReply("not json", usage=Usage(10, 5))
+
+        llm = AlwaysInvalidFinalLLM()
+        with self.assertRaisesRegex(RuntimeError, "after one repair attempt"):
+            ResearchAgent(DemoRetrieval(), llm, settings()).answer(
+                "What factors should constrain a fast-charging protocol?"
+            )
+        self.assertEqual(llm.calls, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
-

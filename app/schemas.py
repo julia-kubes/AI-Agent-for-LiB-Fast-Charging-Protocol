@@ -62,6 +62,7 @@ class ModelReply:
     content: str | None
     tool_calls: tuple[ToolCall, ...] = ()
     usage: Usage = Usage()
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,4 +80,3 @@ class AgentResult:
     usage: Usage
     agent_rounds: int
     tool_calls: int
-

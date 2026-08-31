@@ -7,7 +7,13 @@ from typing import Any
 
 from .config import Settings
 from .interfaces import LLMBackend, RetrievalBackend
-from .prompts import SYSTEM_PROMPT, TOOLS, final_answer_instruction, initial_user_message
+from .prompts import (
+    SYSTEM_PROMPT,
+    TOOLS,
+    final_answer_instruction,
+    initial_user_message,
+    repair_answer_instruction,
+)
 from .schemas import AgentResult, Usage
 from .tools import ToolExecutor
 from .validation import parse_final_answer, validate_answer
@@ -47,8 +53,43 @@ class ResearchAgent:
             if not reply.tool_calls:
                 if not executor.evidence:
                     raise RuntimeError("Model attempted to answer before retrieving evidence")
-                answer = parse_final_answer(reply.content)
                 evidence = tuple(executor.evidence.values())
+                try:
+                    if reply.finish_reason == "length":
+                        raise ValueError("response reached the output-token limit")
+                    answer = parse_final_answer(reply.content)
+                except ValueError as first_error:
+                    messages.append(
+                        {"role": "assistant", "content": reply.content or ""}
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": repair_answer_instruction(
+                                evidence, str(first_error)
+                            ),
+                        }
+                    )
+                    repaired = self.llm.complete(messages, tools=None)
+                    rounds += 1
+                    total_usage = Usage(
+                        total_usage.input_tokens + repaired.usage.input_tokens,
+                        total_usage.output_tokens + repaired.usage.output_tokens,
+                    )
+                    if repaired.tool_calls:
+                        raise RuntimeError(
+                            "LLM returned tool calls during the final JSON repair"
+                        )
+                    if repaired.finish_reason == "length":
+                        raise RuntimeError(
+                            "LLM final answer remained truncated after one repair attempt"
+                        )
+                    try:
+                        answer = parse_final_answer(repaired.content)
+                    except ValueError as repair_error:
+                        raise RuntimeError(
+                            "LLM final answer remained invalid after one repair attempt"
+                        ) from repair_error
                 validation = validate_answer(answer, evidence)
                 return AgentResult(
                     answer, evidence, validation, total_usage, rounds, tool_call_count
@@ -98,4 +139,3 @@ class ResearchAgent:
                 )
 
         raise RuntimeError("Agent reached its maximum rounds without a final answer")
-

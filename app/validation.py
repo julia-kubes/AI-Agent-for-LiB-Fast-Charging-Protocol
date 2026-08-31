@@ -28,8 +28,13 @@ NUMBER_WITH_UNIT = re.compile(
 def parse_final_answer(content: str | None) -> dict[str, Any]:
     if not content or not content.strip():
         raise ValueError("Model returned an empty final answer")
+    normalized = content.strip()
+    if normalized.startswith("```") and normalized.endswith("```"):
+        first_newline = normalized.find("\n")
+        if first_newline != -1:
+            normalized = normalized[first_newline + 1 : -3].strip()
     try:
-        value = json.loads(content)
+        value = json.loads(normalized)
     except json.JSONDecodeError as error:
         raise ValueError("Model final answer is not valid JSON") from error
     if not isinstance(value, dict):
@@ -91,4 +96,3 @@ def validate_answer(
     if warnings:
         return ValidationResult("pass_with_warnings", (), tuple(warnings))
     return ValidationResult("pass")
-

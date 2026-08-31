@@ -52,7 +52,8 @@ class OpenAICompatibleLLM:
 
         data = response.json()
         try:
-            message = data["choices"][0]["message"]
+            choice = data["choices"][0]
+            message = choice["message"]
         except (KeyError, IndexError, TypeError) as error:
             raise RuntimeError("LLM returned an unexpected response shape") from error
 
@@ -83,5 +84,5 @@ class OpenAICompatibleLLM:
                     usage.get("completion_tokens") or usage.get("output_tokens") or 0
                 ),
             ),
+            finish_reason=str(choice.get("finish_reason") or "") or None,
         )
-

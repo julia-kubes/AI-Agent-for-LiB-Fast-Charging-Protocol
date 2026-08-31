@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.schemas import EvidenceChunk
-from app.validation import validate_answer
+from app.validation import parse_final_answer, validate_answer
 
 
 def base_answer() -> dict:
@@ -47,7 +47,10 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result.status, "reject")
         self.assertTrue(any("unavailable" in error for error in result.errors))
 
+    def test_markdown_fenced_json_is_accepted(self) -> None:
+        content = "```json\n" + __import__("json").dumps(base_answer()) + "\n```"
+        self.assertEqual(parse_final_answer(content), base_answer())
+
 
 if __name__ == "__main__":
     unittest.main()
-

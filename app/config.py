@@ -54,7 +54,7 @@ class Settings:
             max_searches=_positive_int("MAX_SEARCHES", 2),
             max_retrieved_chunks=_positive_int("MAX_RETRIEVED_CHUNKS", 12),
             max_evidence_characters=_positive_int("MAX_EVIDENCE_CHARACTERS", 36_000),
-            max_output_tokens=_positive_int("MAX_OUTPUT_TOKENS", 1_500),
+            max_output_tokens=_positive_int("MAX_OUTPUT_TOKENS", 3_000),
             request_timeout_seconds=_positive_int("REQUEST_TIMEOUT_SECONDS", 90),
         )
 

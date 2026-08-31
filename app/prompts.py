@@ -17,6 +17,7 @@ reported by papers from cross-paper synthesis and your own inference. Never inve
 temperature, state-of-charge, timing, or safety limits. State missing operating conditions and
 conflicting evidence. Do not claim that a literature-derived protocol is validated for deployment,
 and never issue commands to charging hardware. If evidence is insufficient, say so explicitly.
+Return no more than three concise protocol suggestions.
 
 Your final response must be one JSON object matching the requested schema, with no Markdown fence.
 """
@@ -118,3 +119,16 @@ def final_answer_instruction(evidence: Sequence[EvidenceChunk]) -> str:
         + json.dumps(FINAL_SCHEMA, ensure_ascii=False)
     )
 
+
+def repair_answer_instruction(evidence: Sequence[EvidenceChunk], reason: str) -> str:
+    ids = [chunk.chunk_id for chunk in evidence]
+    return (
+        "Your previous final answer could not be parsed as complete JSON ("
+        + reason
+        + "). Regenerate the entire answer once. Return one complete JSON object with no "
+        "Markdown fence or commentary. Use no more than three concise protocol suggestions. "
+        "Only cite these chunk IDs: "
+        + json.dumps(ids)
+        + "\nRequired JSON shape:\n"
+        + json.dumps(FINAL_SCHEMA, ensure_ascii=False)
+    )
