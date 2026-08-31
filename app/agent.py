@@ -1,0 +1,101 @@
+"""Bounded, provider-neutral agent loop for evidence-grounded retrieval."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from .config import Settings
+from .interfaces import LLMBackend, RetrievalBackend
+from .prompts import SYSTEM_PROMPT, TOOLS, final_answer_instruction, initial_user_message
+from .schemas import AgentResult, Usage
+from .tools import ToolExecutor
+from .validation import parse_final_answer, validate_answer
+
+
+class ResearchAgent:
+    def __init__(
+        self, retrieval: RetrievalBackend, llm: LLMBackend, settings: Settings
+    ) -> None:
+        self.retrieval = retrieval
+        self.llm = llm
+        self.settings = settings
+
+    def answer(
+        self, question: str, conditions: dict[str, str] | None = None
+    ) -> AgentResult:
+        if not question.strip():
+            raise ValueError("Question cannot be empty")
+        if len(question) > 4_000:
+            raise ValueError("Question is too long")
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": initial_user_message(question, conditions)},
+        ]
+        executor = ToolExecutor(self.retrieval, self.settings)
+        total_usage = Usage()
+        tool_call_count = 0
+        rounds = 0
+
+        for rounds in range(1, self.settings.max_agent_rounds + 1):
+            reply = self.llm.complete(messages, tools=TOOLS)
+            total_usage = Usage(
+                total_usage.input_tokens + reply.usage.input_tokens,
+                total_usage.output_tokens + reply.usage.output_tokens,
+            )
+            if not reply.tool_calls:
+                if not executor.evidence:
+                    raise RuntimeError("Model attempted to answer before retrieving evidence")
+                answer = parse_final_answer(reply.content)
+                evidence = tuple(executor.evidence.values())
+                validation = validate_answer(answer, evidence)
+                return AgentResult(
+                    answer, evidence, validation, total_usage, rounds, tool_call_count
+                )
+
+            assistant_tool_calls = []
+            for call in reply.tool_calls:
+                assistant_tool_calls.append(
+                    {
+                        "id": call.call_id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(call.arguments),
+                        },
+                    }
+                )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": reply.content,
+                    "tool_calls": assistant_tool_calls,
+                }
+            )
+            for call in reply.tool_calls:
+                tool_call_count += 1
+                try:
+                    output = executor.execute(call)
+                    content = json.dumps(output, ensure_ascii=False)
+                except (ValueError, RuntimeError) as error:
+                    content = json.dumps({"error": str(error)})
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.call_id,
+                        "name": call.name,
+                        "content": content,
+                    }
+                )
+
+            if rounds == self.settings.max_agent_rounds - 1 and executor.evidence:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": final_answer_instruction(tuple(executor.evidence.values())),
+                    }
+                )
+
+        raise RuntimeError("Agent reached its maximum rounds without a final answer")
+

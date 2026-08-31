@@ -1,0 +1,4 @@
+-r embedding/requirements.txt
+httpx>=0.28.0
+python-dotenv>=1.0.1
+streamlit>=1.48.0

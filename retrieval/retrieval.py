@@ -170,6 +170,8 @@ def retrieve_candidates(
     embedding_model: str,
     candidate_count: int,
     include_intro: bool,
+    exclude_abstract: bool = False,
+    record_id: str | None = None,
 ) -> list[Candidate]:
     table = psycopg.sql.Identifier(schema_name, table_name)
     introduction_filter = psycopg.sql.SQL("")
@@ -190,6 +192,29 @@ def retrieve_candidates(
             )
             """
         )
+    abstract_filter = psycopg.sql.SQL("")
+    if exclude_abstract:
+        abstract_filter = psycopg.sql.SQL(
+            """
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                    COALESCE(
+                        jsonb_extract_path(c.metadata, 'docling', 'headings'),
+                        '[]'::jsonb
+                    )
+                ) AS heading(value)
+                WHERE regexp_replace(
+                    lower(heading.value), '[^a-z0-9]+', '', 'g'
+                ) ~ '^([0-9]+|[ivxlcdm]+)?abstract$'
+            )
+            """
+        )
+    record_filter = psycopg.sql.SQL("")
+    parameters: list[Any] = [query_embedding, embedding_model]
+    if record_id is not None:
+        record_filter = psycopg.sql.SQL("AND c.record_id = %s")
+        parameters.append(record_id)
     statement = psycopg.sql.SQL(
         """
         SELECT
@@ -222,16 +247,16 @@ def retrieve_candidates(
               ) ~ '^([0-9]+|[ivxlcdm]+)?(references|bibliography|workscited)$'
           )
           {}
+          {}
+          {}
         ORDER BY c.embedding <=> %s
         LIMIT %s
         """
-    ).format(table, introduction_filter)
+    ).format(table, introduction_filter, abstract_filter, record_filter)
 
     with connection.cursor() as cursor:
-        cursor.execute(
-            statement,
-            (query_embedding, embedding_model, query_embedding, candidate_count),
-        )
+        parameters.extend((query_embedding, candidate_count))
+        cursor.execute(statement, parameters)
         rows = cursor.fetchall()
 
     return [
