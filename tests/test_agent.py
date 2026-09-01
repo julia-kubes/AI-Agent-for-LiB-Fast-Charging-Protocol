@@ -25,6 +25,49 @@ def settings() -> Settings:
 
 
 class ResearchAgentTests(unittest.TestCase):
+    def test_casual_query_is_rejected_before_llm_or_retrieval(self) -> None:
+        class FailingLLM:
+            def complete(self, messages, tools=None):
+                raise AssertionError("The LLM must not be called for unrelated input")
+
+        class FailingRetrieval:
+            def search_chunks(self, query, filters, top_k):
+                raise AssertionError("Retrieval must not run for unrelated input")
+
+            def fetch_neighbors(self, chunk_id, before=1, after=1):
+                raise AssertionError("Retrieval must not run for unrelated input")
+
+            def get_paper_metadata(self, record_id):
+                raise AssertionError("Retrieval must not run for unrelated input")
+
+        result = ResearchAgent(FailingRetrieval(), FailingLLM(), settings()).answer(
+            "What's up?"
+        )
+
+        self.assertEqual(result.validation.status, "pass")
+        self.assertEqual(result.agent_rounds, 0)
+        self.assertEqual(result.tool_calls, 0)
+        self.assertEqual(result.usage.total_tokens, 0)
+        self.assertEqual(result.evidence, ())
+        self.assertEqual(result.answer["protocol_suggestions"], [])
+        self.assertIn("outside my current scope", result.answer["summary"])
+
+    def test_clearly_unrelated_question_is_rejected(self) -> None:
+        result = ResearchAgent(DemoRetrieval(), DemoLLM(), settings()).answer(
+            "How do I bake sourdough bread?"
+        )
+        self.assertEqual(result.validation.status, "pass")
+        self.assertEqual(result.agent_rounds, 0)
+        self.assertEqual(result.tool_calls, 0)
+
+    def test_short_question_with_battery_conditions_stays_in_scope(self) -> None:
+        result = ResearchAgent(DemoRetrieval(), DemoLLM(), settings()).answer(
+            "What approach should I test?", {"chemistry": "graphite/NMC811"}
+        )
+        self.assertEqual(result.validation.status, "pass")
+        self.assertEqual(result.agent_rounds, 2)
+        self.assertEqual(result.tool_calls, 1)
+
     def test_offline_agent_retrieves_and_returns_valid_answer(self) -> None:
         result = ResearchAgent(DemoRetrieval(), DemoLLM(), settings()).answer(
             "What factors should constrain a fast-charging protocol?"

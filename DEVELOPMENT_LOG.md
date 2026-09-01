@@ -187,3 +187,80 @@ database connection information must never be recorded here.
 - `app/validation.py`
 - `tests/test_agent.py`
 - `tests/test_validation.py`
+
+## 2026-09-01 - Out-of-domain casual-query test
+
+**Exact query**
+
+- `What's up?`
+
+**Intended behavior**
+
+- Recognize that the query is unrelated to lithium-ion fast charging.
+- Avoid literature retrieval and protocol generation.
+- Respond conversationally or briefly redirect the user toward the application's
+  fast-charging scope.
+
+**Observed behavior**
+
+- The agent made one retrieval tool call and retained five chunks from five papers.
+- It interpreted the query as an underspecified request for a charging protocol,
+  summarized three battery studies, and asked for missing operating conditions.
+- The returned object used an alternate refusal schema and failed final validation
+  because five required fields were absent.
+- Validation status: `reject`; 2 agent rounds; 1 tool call; 3,244 input tokens;
+  489 output tokens; 3,733 total tokens; 37.75 seconds; 0 repair attempts.
+
+**Assessment**
+
+- Failed the intended out-of-domain behavior. The response was cautious rather than
+  unsafe, but it performed irrelevant retrieval, spent unnecessary tokens, and did
+  not comply with the required response schema.
+- This exposes the need for explicit scope classification or an out-of-domain path
+  before retrieval, plus schema-compatible handling of non-protocol responses.
+
+**Artifacts**
+
+- `evaluation/question_unrelated.jsonl`
+- `evaluation/results_unrelated_2026-09-01.jsonl`
+- `development_logs/live_evaluation_unrelated_2026-09-01.md`
+
+**Status**
+
+- Resolved on 2026-09-01 with a deterministic pre-retrieval scope gate.
+
+**Implemented fix**
+
+- Added `app/scope.py` to detect inputs with no battery fast-charging domain signal.
+- Supplied battery operating conditions keep short or ambiguous prompts in scope.
+- Clearly unrelated questions now return a normal schema-valid response before the
+  retrieval backend or LLM is called.
+- The early response records no evidence, zero agent rounds, zero tool calls, and
+  zero token usage.
+- Added tests for casual input, a clearly unrelated request, an ordinary in-domain
+  charging question, and a short question accompanied by battery conditions.
+
+**Post-fix verification**
+
+- All 11 offline unit tests pass.
+- Repeated the exact `What's up?` evaluation through the live-configured runner.
+- Post-fix result: `pass`; 0 evidence chunks; 0 agent rounds; 0 tool calls; 0 input
+  tokens; 0 output tokens; 0.0 reported seconds.
+- The rerun completed inside the network-restricted environment, confirming that it
+  made no Parley or Neon request.
+
+**Post-fix artifacts**
+
+- `evaluation/results_unrelated_post_fix_2026-09-01.jsonl`
+- `development_logs/live_evaluation_unrelated_post_fix_2026-09-01.md`
+
+**Streamlit verification correction**
+
+- The first manual UI retest still retrieved evidence because the Streamlit process
+  started before the scope fix had not reloaded the edited code.
+- Its automatic file watcher was repeatedly failing while inspecting optional
+  Transformers image modules, so hot reload was not reliable.
+- Restarted Streamlit on port 8504 with file watching disabled.
+- Submitted the exact query `What's up?` through the rendered UI and confirmed the
+  out-of-domain response, no displayed evidence, `pass` validation, 0 agent rounds,
+  0 tool calls, and 0 input/output tokens.
