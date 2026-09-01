@@ -264,3 +264,32 @@ database connection information must never be recorded here.
 - Submitted the exact query `What's up?` through the rendered UI and confirmed the
   out-of-domain response, no displayed evidence, `pass` validation, 0 agent rounds,
   0 tool calls, and 0 input/output tokens.
+
+## 2026-09-01 - Streamlit specifications and response copying
+
+**Requested changes**
+
+- Rename `Optional operating conditions` to `Optional Specifications`.
+- Add `Form factor` as an optional user-supplied specification.
+- Add a button that copies the complete generated response to the clipboard.
+
+**Implementation**
+
+- Added the `Form factor` text field and pass non-empty values to the agent as the
+  `form_factor` condition.
+- Added a Markdown formatter covering summary, every protocol-suggestion field,
+  conflicting evidence, missing information, safety notes, and follow-up questions.
+- Added a browser-side `Copy entire response` button with visible `Copied!` feedback
+  and a compatibility fallback when the modern clipboard API is unavailable.
+- The response is copied locally in the browser; it is not sent to another service.
+- Added follow-up questions to the visible Streamlit response so all generated
+  answer sections are represented in the interface.
+
+**Verification**
+
+- All 13 unit tests pass, including complete-response and out-of-domain clipboard
+  formatting tests.
+- Restarted the live Streamlit app and verified the renamed panel and `Form factor`
+  field in the rendered page.
+- Generated an out-of-domain response, clicked the copy button, observed `Copied!`,
+  and verified that the clipboard contained the formatted response.
