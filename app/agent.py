@@ -42,6 +42,7 @@ class ResearchAgent:
         executor = ToolExecutor(self.retrieval, self.settings)
         total_usage = Usage()
         tool_call_count = 0
+        repair_attempts = 0
         rounds = 0
 
         for rounds in range(1, self.settings.max_agent_rounds + 1):
@@ -59,6 +60,7 @@ class ResearchAgent:
                         raise ValueError("response reached the output-token limit")
                     answer = parse_final_answer(reply.content)
                 except ValueError as first_error:
+                    repair_attempts = 1
                     messages.append(
                         {"role": "assistant", "content": reply.content or ""}
                     )
@@ -92,7 +94,13 @@ class ResearchAgent:
                         ) from repair_error
                 validation = validate_answer(answer, evidence)
                 return AgentResult(
-                    answer, evidence, validation, total_usage, rounds, tool_call_count
+                    answer,
+                    evidence,
+                    validation,
+                    total_usage,
+                    rounds,
+                    tool_call_count,
+                    repair_attempts,
                 )
 
             assistant_tool_calls = []

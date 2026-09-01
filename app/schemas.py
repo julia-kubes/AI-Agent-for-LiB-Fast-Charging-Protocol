@@ -80,3 +80,4 @@ class AgentResult:
     usage: Usage
     agent_rounds: int
     tool_calls: int
+    repair_attempts: int = 0

@@ -4,6 +4,41 @@ This file records implementation bugs, fixes, behavioral changes, and verificati
 results while the application is under active development. Credentials and raw
 database connection information must never be recorded here.
 
+## 2026-09-01 - First five-query live evaluation
+
+**Artifacts**
+
+- Human-readable, query-separated report:
+  [`development_logs/live_evaluation_2026-09-01.md`](development_logs/live_evaluation_2026-09-01.md)
+- Machine-readable results with full answer and evidence traces:
+  [`evaluation/results_live_2026-09-01.jsonl`](evaluation/results_live_2026-09-01.jsonl)
+- Reusable five-question set:
+  [`evaluation/questions_live_5.jsonl`](evaluation/questions_live_5.jsonl)
+
+**Execution summary**
+
+- Exactly five live Neon-to-Parley queries ran with `gpt-5.4-mini`.
+- Four results validated `pass`; the analogue-transfer result validated
+  `pass_with_warnings`; no query raised an execution error.
+- No JSON repair was required.
+- Total usage was 38,465 input tokens and 9,023 output tokens across the five runs.
+- Individual runs retained 10-17 evidence chunks from 4-6 distinct papers.
+- The readable report reproduces each exact query, supplied conditions, intended
+  test, execution metrics, structured answer, evidence table, and evidence excerpts.
+
+**Initial observations for joint review**
+
+- The known NCM523 query recovered the expected Part IV and Part V experimental
+  papers and produced more concrete rates than the broad query.
+- The unsafe universal-protocol challenge explicitly stated that the requested
+  universal claim was unsupported.
+- The analogue-transfer query's two warnings flag `10 °C` from the supplied target
+  condition as absent verbatim from cited evidence; they do not indicate that a new
+  charging current or voltage was fabricated.
+- Incorrect chunk-level titles such as `You may also like` remain visible in the
+  report and reinforce the title-provenance issue found in the adapter audit.
+- Detailed scientific and usability scoring is pending collaborator review.
+
 ## 2026-09-01 - Live retrieval adapter audit
 
 **Scope**
