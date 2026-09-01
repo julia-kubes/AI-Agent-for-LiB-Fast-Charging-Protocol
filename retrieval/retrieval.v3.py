@@ -1,16 +1,14 @@
-"""Experiment with app-equivalent Neon retrieval without calling an LLM.
+"""Run the retrieval.v3 settings through the app's integrated retrieval path.
 
-``ExperimentalNeonRetrievalAdapter.search_chunks`` initially mirrors the app
-adapter. Make retrieval experiments in that method, leaving retrieval.v2.py as
-the current-app comparison CLI. Once an experiment is validated, the focused
-method diff can be transferred to app/retrieval_adapter.py.
+This remains a direct, no-LLM comparison CLI. Its experimental retrieval logic
+now lives in ``app.retrieval_adapter`` so CLI experiments and the app cannot
+drift apart.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,11 +28,10 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 from app.config import Settings  # noqa: E402
 from app.retrieval_adapter import (  # noqa: E402
     NeonRetrievalAdapter,
-    encode_query,
-    rerank,
-    retrieve_candidates,
+    filter_excluded_sections,
+    select_with_review_cap,
 )
-from app.schemas import EvidenceChunk, SearchFilters  # noqa: E402
+from app.schemas import SearchFilters  # noqa: E402
 
 
 def _load_baseline_cli() -> Any:
@@ -49,128 +46,11 @@ def _load_baseline_cli() -> Any:
 
 baseline_cli = _load_baseline_cli()
 
-INITIAL_CANDIDATE_COUNT = 72
 DEFAULT_FINAL_CHUNK_COUNT = 18
-MAX_CHUNKS_PER_PAPER = 6
-MAX_REVIEW_CHUNKS = 4
-
-ALWAYS_EXCLUDED_SECTIONS = {
-    "acknowledgement",
-    "acknowledgements",
-    "acknowledgment",
-    "acknowledgments",
-    "bibliography",
-    "references",
-    "workscited",
-}
-
-
-def normalize_section_heading(value: str) -> str:
-    without_numbering = re.sub(
-        r"^(?:[0-9]+(?:\.[0-9]+)*|[ivxlcdm]+)[\s.):-]+",
-        "",
-        value.casefold().strip(),
-    )
-    return re.sub(r"[^a-z0-9]+", "", without_numbering)
-
-
-def filter_excluded_sections(
-    candidates: list[Any], filters: SearchFilters
-) -> list[Any]:
-    excluded = set(ALWAYS_EXCLUDED_SECTIONS)
-    if "introduction" in filters.excluded_sections:
-        excluded.add("introduction")
-    if "abstract" in filters.excluded_sections:
-        excluded.add("abstract")
-    return [
-        candidate
-        for candidate in candidates
-        if not any(
-            normalize_section_heading(heading) in excluded
-            for heading in candidate.section_headings
-        )
-    ]
-
-
-def select_with_review_cap(
-    ranked: list[Any],
-    paper_types: dict[str, str | None],
-    top_k: int,
-) -> list[Any]:
-    """Select ranked candidates while limiting papers classified as Review."""
-    selected = []
-    review_count = 0
-    for candidate in ranked:
-        paper_type = (paper_types.get(candidate.record_id) or "").strip().casefold()
-        if paper_type == "review":
-            if review_count >= MAX_REVIEW_CHUNKS:
-                continue
-            review_count += 1
-        selected.append(candidate)
-        if len(selected) == top_k:
-            break
-    return selected
 
 
 class ExperimentalNeonRetrievalAdapter(NeonRetrievalAdapter):
-    """Editable retrieval path, initially identical to the app adapter."""
-
-    def search_chunks(
-        self, query: str, filters: SearchFilters, top_k: int
-    ) -> list[EvidenceChunk]:
-        self._load_models()
-        query_embedding = encode_query(self._embedding_backend, query)
-        connection = self._connect()
-        try:
-            candidates = retrieve_candidates(
-                connection=connection,
-                psycopg=self._psycopg,
-                schema_name="public",
-                table_name="rag_chunks",
-                query_embedding=query_embedding,
-                embedding_model=self.embedding_model,
-                candidate_count=INITIAL_CANDIDATE_COUNT,
-                include_intro="introduction" not in filters.excluded_sections,
-                exclude_abstract="abstract" in filters.excluded_sections,
-                record_id=filters.record_id,
-            )
-            candidates = filter_excluded_sections(candidates, filters)
-            paper_types: dict[str, str | None] = {}
-            paper_titles: dict[str, str | None] = {}
-            record_ids = list({candidate.record_id for candidate in candidates})
-            if record_ids:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT record_id, paper_type, paper_title
-                        FROM public.paper_metadata
-                        WHERE record_id = ANY(%s)
-                        """,
-                        (record_ids,),
-                    )
-                    for record_id, paper_type, paper_title in cursor.fetchall():
-                        paper_types[record_id] = paper_type
-                        paper_titles[record_id] = paper_title
-        finally:
-            connection.close()
-        if not candidates:
-            return []
-        ranked = rerank(
-            model=self._reranker_backend,
-            query=query,
-            candidates=candidates,
-            batch_size=16,
-            top_k=len(candidates),
-            max_per_paper=MAX_CHUNKS_PER_PAPER,
-        )
-        selected = select_with_review_cap(ranked, paper_types, top_k)
-        evidence = []
-        for candidate in selected:
-            candidate.title = paper_titles.get(candidate.record_id) or candidate.title
-            chunk = self._to_evidence(candidate)
-            chunk.metadata["paper_type"] = paper_types.get(candidate.record_id)
-            evidence.append(chunk)
-        return evidence
+    """Compatibility name for the retrieval.v3 comparison CLI."""
 
 
 def main() -> int:
