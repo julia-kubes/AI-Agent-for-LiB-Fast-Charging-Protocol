@@ -293,3 +293,14 @@ database connection information must never be recorded here.
   field in the rendered page.
 - Generated an out-of-domain response, clicked the copy button, observed `Copied!`,
   and verified that the clipboard contained the formatted response.
+
+## 2026-09-01 - Manual Tesla pulse-charging prompt retained
+
+- Added the exact prompt `Give me a pulse charging protocol for my 2020 tesla model
+  5.` and the complete copied Streamlit response to
+  `development_logs/live_evaluation_2026-09-01.md`.
+- Labeled it as an additional manual UI evaluation and stated that automated
+  execution statistics were not captured, preserving the distinction from the five
+  automated live runs.
+- The case tests handling of an ambiguous or incorrect model name, missing vehicle
+  and pack specifications, mixed pulse-charging evidence, and safety boundaries.
