@@ -4,6 +4,62 @@ This file records implementation bugs, fixes, behavioral changes, and verificati
 results while the application is under active development. Credentials and raw
 database connection information must never be recorded here.
 
+## 2026-09-01 - Live retrieval adapter audit
+
+**Scope**
+
+- Read-only Neon checks; no Parley calls and no database mutations.
+- Audited database mappings, section-heading coverage, live semantic search,
+  record-specific filtering, neighboring chunks, metadata lookup, source diversity,
+  and metadata completeness.
+
+**Passed checks**
+
+- Live semantic retrieval returned eight ranked chunks from seven distinct papers.
+- No introduction, abstract, reference, or bibliography heading appeared in the
+  eight default-filter results.
+- Record-specific search returned five chunks and no foreign record IDs.
+- Neighbor retrieval returned indices 2-6 around index 4, all from the anchor paper.
+- Metadata lookup returned the expected metadata object for the top-ranked paper.
+- Vector rank, vector similarity, reranker score, page numbers, section paths, stable
+  chunk IDs, and record IDs survived adapter mapping.
+
+**Database findings**
+
+- 3,970 chunks represent 69 distinct paper records.
+- `paper_metadata` contains 67 rows. `guo_2014` and `spingler_2000` have chunks but
+  no metadata; no metadata-only orphan records were found.
+- Section headings identify 133 introduction chunks, 157 abstract chunks, and 624
+  reference-like chunks. Twenty-two chunks have no headings and therefore cannot be
+  excluded using heading rules.
+- The top eight results included seven papers; one paper supplied two chunks. One
+  title explicitly identified itself as a review.
+
+**Metadata completeness**
+
+- DOI, cathode chemistry, paper title, and review notes: 67/67 records.
+- Form factor: 66/67; experimental ambient temperature: 65/67; SOC information:
+  58/67; manufacturer or source organization: 43/67.
+- The top result's metadata contained useful applicability fields: NCM523/graphite,
+  custom reference laboratory cells, 30 C experiments, and 0-80%/0-90% SOC ranges.
+
+**Open quality concerns**
+
+- Some chunk-level `metadata.title` values are incorrect document titles, including
+  `You may also like`, `RESEARCH ARTICLE`, and introduction headings. Retrieval output
+  currently displays this chunk-level value instead of the cleaner
+  `paper_metadata.paper_title` field.
+- Two records cannot supply applicability or citation metadata until their mappings
+  are repaired.
+- The 22 heading-less chunks can bypass section exclusions.
+- Review classification is not stored as a dedicated field; detecting reviews from
+  title text alone is incomplete.
+
+**Status**
+
+- Adapter functionality passed. Data-cleanup and metadata-consumer changes remain
+  open and should be prioritized through the protocol-specificity evaluation.
+
 ## Open quality issue - Protocol suggestions are too general
 
 **Observed behavior**
