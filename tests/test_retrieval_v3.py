@@ -20,6 +20,29 @@ retrieval_v3 = load_retrieval_v3()
 
 
 class RetrievalV3SelectionTests(unittest.TestCase):
+    def test_section_filter_excludes_non_evidence_sections(self) -> None:
+        candidates = [
+            SimpleNamespace(section_headings=["1 Introduction"]),
+            SimpleNamespace(section_headings=["IV. References"]),
+            SimpleNamespace(section_headings=["Acknowledgements"]),
+            SimpleNamespace(section_headings=["Results", "Cycling performance"]),
+        ]
+
+        selected = retrieval_v3.filter_excluded_sections(
+            candidates,
+            retrieval_v3.SearchFilters(),
+        )
+
+        self.assertEqual(selected, [candidates[-1]])
+
+    def test_section_filter_can_include_introduction(self) -> None:
+        introduction = SimpleNamespace(section_headings=["Introduction"])
+        selected = retrieval_v3.filter_excluded_sections(
+            [introduction],
+            retrieval_v3.SearchFilters(excluded_sections=("abstract",)),
+        )
+        self.assertEqual(selected, [introduction])
+
     def test_review_cap_skips_excess_reviews_and_fills_from_other_types(self) -> None:
         ranked = [
             SimpleNamespace(record_id=f"review_{index}")

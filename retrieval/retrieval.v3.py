@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,43 @@ INITIAL_CANDIDATE_COUNT = 72
 DEFAULT_FINAL_CHUNK_COUNT = 18
 MAX_CHUNKS_PER_PAPER = 6
 MAX_REVIEW_CHUNKS = 4
+
+ALWAYS_EXCLUDED_SECTIONS = {
+    "acknowledgement",
+    "acknowledgements",
+    "acknowledgment",
+    "acknowledgments",
+    "bibliography",
+    "references",
+    "workscited",
+}
+
+
+def normalize_section_heading(value: str) -> str:
+    without_numbering = re.sub(
+        r"^(?:[0-9]+(?:\.[0-9]+)*|[ivxlcdm]+)[\s.):-]+",
+        "",
+        value.casefold().strip(),
+    )
+    return re.sub(r"[^a-z0-9]+", "", without_numbering)
+
+
+def filter_excluded_sections(
+    candidates: list[Any], filters: SearchFilters
+) -> list[Any]:
+    excluded = set(ALWAYS_EXCLUDED_SECTIONS)
+    if "introduction" in filters.excluded_sections:
+        excluded.add("introduction")
+    if "abstract" in filters.excluded_sections:
+        excluded.add("abstract")
+    return [
+        candidate
+        for candidate in candidates
+        if not any(
+            normalize_section_heading(heading) in excluded
+            for heading in candidate.section_headings
+        )
+    ]
 
 
 def select_with_review_cap(
@@ -96,19 +134,23 @@ class ExperimentalNeonRetrievalAdapter(NeonRetrievalAdapter):
                 exclude_abstract="abstract" in filters.excluded_sections,
                 record_id=filters.record_id,
             )
+            candidates = filter_excluded_sections(candidates, filters)
             paper_types: dict[str, str | None] = {}
+            paper_titles: dict[str, str | None] = {}
             record_ids = list({candidate.record_id for candidate in candidates})
             if record_ids:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        SELECT record_id, paper_type
+                        SELECT record_id, paper_type, paper_title
                         FROM public.paper_metadata
                         WHERE record_id = ANY(%s)
                         """,
                         (record_ids,),
                     )
-                    paper_types = dict(cursor.fetchall())
+                    for record_id, paper_type, paper_title in cursor.fetchall():
+                        paper_types[record_id] = paper_type
+                        paper_titles[record_id] = paper_title
         finally:
             connection.close()
         if not candidates:
@@ -124,6 +166,7 @@ class ExperimentalNeonRetrievalAdapter(NeonRetrievalAdapter):
         selected = select_with_review_cap(ranked, paper_types, top_k)
         evidence = []
         for candidate in selected:
+            candidate.title = paper_titles.get(candidate.record_id) or candidate.title
             chunk = self._to_evidence(candidate)
             chunk.metadata["paper_type"] = paper_types.get(candidate.record_id)
             evidence.append(chunk)
