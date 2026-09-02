@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from retrieval.retrieval import (
@@ -14,6 +15,68 @@ from retrieval.retrieval import (
 )
 
 from .schemas import EvidenceChunk, SearchFilters
+
+
+INITIAL_CANDIDATE_COUNT = 72
+MAX_CHUNKS_PER_PAPER = 6
+MAX_REVIEW_CHUNKS = 4
+
+ALWAYS_EXCLUDED_SECTIONS = {
+    "acknowledgement",
+    "acknowledgements",
+    "acknowledgment",
+    "acknowledgments",
+    "bibliography",
+    "references",
+    "workscited",
+}
+
+
+def normalize_section_heading(value: str) -> str:
+    without_numbering = re.sub(
+        r"^(?:[0-9]+(?:\.[0-9]+)*|[ivxlcdm]+)[\s.):-]+",
+        "",
+        value.casefold().strip(),
+    )
+    return re.sub(r"[^a-z0-9]+", "", without_numbering)
+
+
+def filter_excluded_sections(
+    candidates: list[Candidate], filters: SearchFilters
+) -> list[Candidate]:
+    excluded = set(ALWAYS_EXCLUDED_SECTIONS)
+    if "introduction" in filters.excluded_sections:
+        excluded.add("introduction")
+    if "abstract" in filters.excluded_sections:
+        excluded.add("abstract")
+    return [
+        candidate
+        for candidate in candidates
+        if not any(
+            normalize_section_heading(heading) in excluded
+            for heading in candidate.section_headings
+        )
+    ]
+
+
+def select_with_review_cap(
+    ranked: list[Candidate],
+    paper_types: dict[str, str | None],
+    top_k: int,
+) -> list[Candidate]:
+    """Select ranked candidates while limiting papers classified as Review."""
+    selected = []
+    review_count = 0
+    for candidate in ranked:
+        paper_type = (paper_types.get(candidate.record_id) or "").strip().casefold()
+        if paper_type == "review":
+            if review_count >= MAX_REVIEW_CHUNKS:
+                continue
+            review_count += 1
+        selected.append(candidate)
+        if len(selected) == top_k:
+            break
+    return selected
 
 
 class NeonRetrievalAdapter:
@@ -78,11 +141,28 @@ class NeonRetrievalAdapter:
                 table_name="rag_chunks",
                 query_embedding=query_embedding,
                 embedding_model=self.embedding_model,
-                candidate_count=max(30, top_k * 4),
+                candidate_count=INITIAL_CANDIDATE_COUNT,
                 include_intro="introduction" not in filters.excluded_sections,
                 exclude_abstract="abstract" in filters.excluded_sections,
                 record_id=filters.record_id,
             )
+            candidates = filter_excluded_sections(candidates, filters)
+            paper_types: dict[str, str | None] = {}
+            paper_titles: dict[str, str | None] = {}
+            record_ids = list({candidate.record_id for candidate in candidates})
+            if record_ids:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT record_id, paper_type, paper_title
+                        FROM public.paper_metadata
+                        WHERE record_id = ANY(%s)
+                        """,
+                        (record_ids,),
+                    )
+                    for record_id, paper_type, paper_title in cursor.fetchall():
+                        paper_types[record_id] = paper_type
+                        paper_titles[record_id] = paper_title
         finally:
             connection.close()
         if not candidates:
@@ -92,10 +172,17 @@ class NeonRetrievalAdapter:
             query=query,
             candidates=candidates,
             batch_size=16,
-            top_k=top_k,
-            max_per_paper=None,
+            top_k=len(candidates),
+            max_per_paper=MAX_CHUNKS_PER_PAPER,
         )
-        return [self._to_evidence(candidate) for candidate in ranked]
+        selected = select_with_review_cap(ranked, paper_types, top_k)
+        evidence = []
+        for candidate in selected:
+            candidate.title = paper_titles.get(candidate.record_id) or candidate.title
+            chunk = self._to_evidence(candidate)
+            chunk.metadata["paper_type"] = paper_types.get(candidate.record_id)
+            evidence.append(chunk)
+        return evidence
 
     def fetch_neighbors(
         self, chunk_id: str, before: int = 1, after: int = 1
