@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#64748b"/></marker>
+    <marker id="loopArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#16867d"/></marker>
+    <style>
+      .heading{font:700 40px Arial,sans-serif;fill:#172033}.sub{font:400 23px Arial,sans-serif;fill:#596579}
+      .title{font:700 25px Arial,sans-serif;fill:#172033}.text{font:400 20px Arial,sans-serif;fill:#334155}
+      .label{font:700 19px Arial,sans-serif;fill:#334155}.box{stroke-width:2.5;rx:13;ry:13}
+      .line{fill:none;stroke:#64748b;stroke-width:3;marker-end:url(#arrow)}
+      .loop{fill:none;stroke:#16867d;stroke-width:3.5;stroke-dasharray:10 8;marker-end:url(#loopArrow)}
+    </style>
+  </defs>
+  <rect width="1920" height="1080" fill="#ffffff"/>
+  <text x="960" y="55" text-anchor="middle" class="heading">The Agentic Research Loop</text>
+  <text x="960" y="90" text-anchor="middle" class="sub">What the LLM receives, which tools it can request, and how evidence returns for another decision</text>
+
+  <text x="60" y="135" class="label">INFORMATION FED TO THE LLM ON EVERY ROUND</text>
+  <rect x="60" y="155" width="255" height="135" class="box" fill="#eef5ff" stroke="#6e9ed6"/>
+  <text x="188" y="193" text-anchor="middle" class="title">System Prompt</text><text x="188" y="228" text-anchor="middle" class="text"><tspan x="188">Evidence rules, safety,</tspan><tspan x="188" dy="27">and output structure</tspan></text>
+  <rect x="335" y="155" width="255" height="135" class="box" fill="#eef5ff" stroke="#6e9ed6"/>
+  <text x="463" y="193" text-anchor="middle" class="title">User Request</text><text x="463" y="228" text-anchor="middle" class="text"><tspan x="463">Question and known</tspan><tspan x="463" dy="27">battery conditions</tspan></text>
+  <rect x="610" y="155" width="255" height="135" class="box" fill="#eef5ff" stroke="#6e9ed6"/>
+  <text x="738" y="193" text-anchor="middle" class="title">Conversation</text><text x="738" y="228" text-anchor="middle" class="text"><tspan x="738">Previous tool requests</tspan><tspan x="738" dy="27">and returned evidence</tspan></text>
+  <rect x="885" y="155" width="255" height="135" class="box" fill="#e8f7f5" stroke="#49aaa3"/>
+  <text x="1013" y="193" text-anchor="middle" class="title">Tool Definitions</text><text x="1013" y="228" text-anchor="middle" class="text"><tspan x="1013">Names, descriptions,</tspan><tspan x="1013" dy="27">parameters, and limits</tspan></text>
+
+  <path d="M188 290 V340 H565" class="line"/><path d="M463 290 V340 H565" class="line"/><path d="M738 290 V340 H635" class="line"/><path d="M1013 290 V340 H635" class="line"/>
+  <rect x="565" y="315" width="520" height="155" class="box" fill="#fff0e5" stroke="#e3a06c"/>
+  <text x="825" y="360" text-anchor="middle" class="title">LLM Reviews the Current State</text>
+  <text x="825" y="398" text-anchor="middle" class="text"><tspan x="825">Compares the question with the available evidence</tspan><tspan x="825" dy="29">and chooses the next action</tspan></text>
+
+  <path d="M1085 392 H1215" class="line"/>
+  <polygon points="1350,315 1485,392 1350,469 1215,392" fill="#edf8ef" stroke="#6db77c" stroke-width="2.5"/>
+  <text x="1350" y="382" text-anchor="middle" class="title">Enough evidence?</text><text x="1350" y="416" text-anchor="middle" class="text">LLM judgment</text>
+
+  <path d="M1485 392 H1580" class="line"/><text x="1528" y="375" text-anchor="middle" class="label">YES</text>
+  <rect x="1580" y="315" width="280" height="155" class="box" fill="#f0edfb" stroke="#9382cc"/>
+  <text x="1720" y="358" text-anchor="middle" class="title">Generate Final Answer</text>
+  <text x="1720" y="395" text-anchor="middle" class="text"><tspan x="1720">Structured JSON with citations,</tspan><tspan x="1720" dy="28">limitations, uncertainty,</tspan><tspan x="1720" dy="28">and safety notes</tspan></text>
+
+  <path d="M1350 469 V540" class="line"/><text x="1375" y="512" class="label">NO</text>
+  <rect x="1195" y="540" width="310" height="125" class="box" fill="#fff8e7" stroke="#d3a33c"/>
+  <text x="1350" y="580" text-anchor="middle" class="title">Structured Tool Request</text>
+  <text x="1350" y="618" text-anchor="middle" class="text"><tspan x="1350">Approved tool name plus</tspan><tspan x="1350" dy="27">JSON arguments</tspan></text>
+  <path d="M1195 602 H1080" class="line"/>
+  <rect x="770" y="540" width="310" height="125" class="box" fill="#faedf4" stroke="#cb82aa"/>
+  <text x="925" y="580" text-anchor="middle" class="title">Tool Executor</text>
+  <text x="925" y="618" text-anchor="middle" class="text"><tspan x="925">Validates tool, arguments,</tspan><tspan x="925" dy="27">search count, and evidence limits</tspan></text>
+
+  <text x="60" y="715" class="label">ONLY THESE TOOLS ARE AVAILABLE</text>
+  <rect x="60" y="740" width="285" height="130" class="box" fill="#edf8ef" stroke="#6db77c"/>
+  <text x="203" y="780" text-anchor="middle" class="title">search_chunks</text><text x="203" y="818" text-anchor="middle" class="text"><tspan x="203">Find relevant research</tspan><tspan x="203" dy="27">passages</tspan></text>
+  <rect x="365" y="740" width="285" height="130" class="box" fill="#edf8ef" stroke="#6db77c"/>
+  <text x="508" y="780" text-anchor="middle" class="title">fetch_neighbors</text><text x="508" y="818" text-anchor="middle" class="text"><tspan x="508">Retrieve surrounding</tspan><tspan x="508" dy="27">passage context</tspan></text>
+  <rect x="670" y="740" width="285" height="130" class="box" fill="#edf8ef" stroke="#6db77c"/>
+  <text x="813" y="780" text-anchor="middle" class="title">get_paper_metadata</text><text x="813" y="818" text-anchor="middle" class="text"><tspan x="813">Retrieve paper and</tspan><tspan x="813" dy="27">cell details</tspan></text>
+  <path d="M925 665 V700 H203 V740" class="line"/><path d="M925 665 V700 H508 V740" class="line"/><path d="M925 665 V700 H813 V740" class="line"/>
+
+  <path d="M345 805 H1010" class="line"/><path d="M650 805 H1010" class="line"/><path d="M955 805 H1010" class="line"/>
+  <rect x="1010" y="740" width="350" height="130" class="box" fill="#e8f7f5" stroke="#49aaa3"/>
+  <text x="1185" y="780" text-anchor="middle" class="title">Retrieval System</text>
+  <text x="1185" y="817" text-anchor="middle" class="text"><tspan x="1185">Embedding search, filters, reranking,</tspan><tspan x="1185" dy="27">and controlled SQL</tspan></text>
+  <path d="M1360 805 H1455" class="line"/>
+  <rect x="1455" y="740" width="405" height="130" class="box" fill="#eef5ff" stroke="#6e9ed6"/>
+  <text x="1658" y="780" text-anchor="middle" class="title">Tool Result</text>
+  <text x="1658" y="817" text-anchor="middle" class="text"><tspan x="1658">Passages, neighboring context,</tspan><tspan x="1658" dy="27">or paper metadata</tspan></text>
+
+  <path d="M1658 740 V650 C1658 535 1550 510 1120 510 C760 510 738 455 738 290" class="loop"/>
+  <rect x="1455" y="510" width="265" height="45" rx="8" fill="#ffffff"/>
+  <text x="1588" y="540" text-anchor="middle" class="label" fill="#16867d">Evidence added to history</text>
+
+  <text x="960" y="1025" text-anchor="middle" class="sub">The LLM chooses the next action; application code controls what can execute and how long the loop can continue.</text>
+</svg>

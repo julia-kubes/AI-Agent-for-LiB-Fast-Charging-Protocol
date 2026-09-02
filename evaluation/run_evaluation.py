@@ -13,6 +13,7 @@ from app.agent import ResearchAgent
 from app.config import Settings
 from app.demo import DemoLLM, DemoRetrieval
 from app.llm_client import OpenAICompatibleLLM
+from app.presentation import text_items
 from app.retrieval_adapter import NeonRetrievalAdapter
 
 
@@ -37,19 +38,77 @@ def _answer_markdown(answer: dict[str, Any]) -> list[str]:
                 f"- Origin: `{suggestion.get('reported_or_inferred', 'not supplied')}`",
                 f"- Confidence: `{suggestion.get('confidence', 'not supplied')}`",
                 f"- Rationale: {suggestion.get('rationale', '')}",
-                "- Applicable conditions: " + "; ".join(suggestion.get("applicable_conditions") or ["not supplied"]),
-                "- Limitations: " + "; ".join(suggestion.get("limitations") or ["not supplied"]),
-                "- Evidence chunks: " + ", ".join(f"`{item}`" for item in suggestion.get("evidence_chunk_ids") or []),
+                "- Applicable conditions: "
+                + "; ".join(
+                    text_items(
+                        suggestion.get("applicable_conditions"), ["not supplied"]
+                    )
+                ),
+                "- Extrapolation used: "
+                + str((suggestion.get("extrapolation") or {}).get("used", False)),
+                "- Limitations: "
+                + "; ".join(
+                    text_items(suggestion.get("limitations"), ["not supplied"])
+                ),
+                "- Evidence chunks: "
+                + ", ".join(
+                    f"`{item}`"
+                    for item in text_items(suggestion.get("evidence_chunk_ids"))
+                ),
                 "",
             ]
         )
+        steps = suggestion.get("protocol_steps") or []
+        lines.extend(["##### Candidate protocol steps", ""])
+        for step_index, step in enumerate(steps, start=1):
+            if not isinstance(step, dict):
+                continue
+            lines.extend(
+                [
+                    f"**Stage {step_index}: {step.get('stage', 'Stage')}**",
+                    "",
+                    f"- Current/C-rate: {step.get('current_or_c_rate', 'unresolved')}",
+                    f"- Start: {step.get('start_condition', 'not supplied')}",
+                    f"- Transition: {step.get('transition_criterion', 'not supplied')}",
+                    "- Temperature constraints: "
+                    + "; ".join(text_items(step.get("temperature_constraints"), ["not supplied"])),
+                    "- Monitoring: "
+                    + "; ".join(text_items(step.get("monitoring"), ["not supplied"])),
+                    "- Stop conditions: "
+                    + "; ".join(text_items(step.get("stop_conditions"), ["not supplied"])),
+                    f"- Value basis: `{step.get('value_basis', 'not supplied')}`",
+                    "",
+                ]
+            )
+        extrapolation = suggestion.get("extrapolation") or {}
+        if extrapolation.get("used"):
+            lines.extend(
+                [
+                    "##### Extrapolation disclosure",
+                    "",
+                    f"- Justification: {extrapolation.get('justification', '')}",
+                    "- Source conditions: "
+                    + "; ".join(text_items(extrapolation.get("source_conditions"))),
+                    "- Target conditions: "
+                    + "; ".join(text_items(extrapolation.get("target_conditions"))),
+                    "- Key differences: "
+                    + "; ".join(text_items(extrapolation.get("key_differences"))),
+                    "",
+                ]
+            )
+        lines.extend(["##### Validation plan", ""])
+        lines.extend(
+            [f"- {item}" for item in text_items(suggestion.get("validation_plan"))]
+            or ["*(Not supplied.)*"]
+        )
+        lines.append("")
     for heading, field in (
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
         ("Follow-up questions", "follow_up_questions"),
     ):
-        values = answer.get(field) or []
+        values = text_items(answer.get(field))
         lines.extend([f"#### {heading}", ""])
         lines.extend([f"- {value}" for value in values] or ["*(None supplied.)*"])
         lines.append("")

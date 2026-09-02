@@ -85,11 +85,41 @@ class DemoLLM:
             "summary": "The offline infrastructure demonstration completed successfully.",
             "protocol_suggestions": [
                 {
-                    "strategy": "Adapt the protocol to measured cell conditions.",
-                    "reported_or_inferred": "synthesized",
+                    "strategy": "Conservative staged protocol development workflow.",
+                    "reported_or_inferred": "extrapolated",
                     "applicable_conditions": ["Cell-specific validation required"],
+                    "protocol_steps": [
+                        {
+                            "stage": "Initial characterization",
+                            "current_or_c_rate": "Unresolved until cell limits are supplied",
+                            "start_condition": "Characterized cell at controlled temperature",
+                            "transition_criterion": "Proceed only after baseline measurements",
+                            "temperature_constraints": [
+                                "Remain within manufacturer limits"
+                            ],
+                            "monitoring": [
+                                "Cell voltage",
+                                "Cell temperature",
+                                "Lithium-plating indicator",
+                            ],
+                            "stop_conditions": [
+                                "Stop at any manufacturer limit or abnormal response"
+                            ],
+                            "value_basis": "unresolved",
+                        }
+                    ],
                     "rationale": "The demonstration evidence cautions against unvalidated transfer.",
                     "evidence_chunk_ids": ["demo-paper::chunk::0001"],
+                    "extrapolation": {
+                        "used": True,
+                        "source_conditions": ["Synthetic demonstration evidence"],
+                        "target_conditions": ["User-specified cell"],
+                        "justification": "Demonstrates the required disclosure structure.",
+                        "key_differences": ["No real experimental protocol is available"],
+                    },
+                    "validation_plan": [
+                        "Supply real evidence and cell limits before selecting current values"
+                    ],
                     "limitations": ["The evidence in demo mode is synthetic."],
                     "confidence": "low",
                 }
@@ -100,4 +130,3 @@ class DemoLLM:
             "follow_up_questions": [],
         }
         return ModelReply(json.dumps(answer), usage=Usage(650, 180))
-

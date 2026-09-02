@@ -18,11 +18,42 @@ REQUIRED_TOP_LEVEL = {
     "follow_up_questions",
 }
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
-ALLOWED_ORIGIN = {"reported", "synthesized", "inferred"}
+ALLOWED_ORIGIN = {"reported", "synthesized", "extrapolated", "inferred"}
+ALLOWED_VALUE_BASIS = {"reported", "extrapolated", "unresolved"}
+REQUIRED_SUGGESTION_FIELDS = {
+    "strategy",
+    "reported_or_inferred",
+    "applicable_conditions",
+    "protocol_steps",
+    "rationale",
+    "evidence_chunk_ids",
+    "extrapolation",
+    "validation_plan",
+    "limitations",
+    "confidence",
+}
+REQUIRED_STEP_FIELDS = {
+    "stage",
+    "current_or_c_rate",
+    "start_condition",
+    "transition_criterion",
+    "temperature_constraints",
+    "monitoring",
+    "stop_conditions",
+    "value_basis",
+}
 NUMBER_WITH_UNIT = re.compile(
     r"(?<!\w)[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*(?:C|°C|K|V|mV|A|mA|%|SOC|h|min|s)\b",
     re.IGNORECASE,
 )
+
+
+def _flatten_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return " ".join(_flatten_text(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return " ".join(_flatten_text(item) for item in value)
+    return str(value or "")
 
 
 def parse_final_answer(content: str | None) -> dict[str, Any]:
@@ -55,6 +86,8 @@ def validate_answer(
     if not isinstance(suggestions, list):
         errors.append("protocol_suggestions must be a list")
         suggestions = []
+    elif len(suggestions) > 3:
+        errors.append("protocol_suggestions must contain no more than three protocols")
 
     allowed_ids = {chunk.chunk_id for chunk in evidence}
     evidence_by_id = {chunk.chunk_id: chunk.text for chunk in evidence}
@@ -63,6 +96,11 @@ def validate_answer(
         if not isinstance(suggestion, dict):
             errors.append(f"{label} must be an object")
             continue
+        missing_suggestion = REQUIRED_SUGGESTION_FIELDS - suggestion.keys()
+        if missing_suggestion:
+            errors.append(
+                f"{label} is missing fields: " + ", ".join(sorted(missing_suggestion))
+            )
         citations = suggestion.get("evidence_chunk_ids")
         if not isinstance(citations, list) or not citations:
             errors.append(f"{label} requires at least one evidence_chunk_id")
@@ -75,9 +113,59 @@ def validate_answer(
         if suggestion.get("reported_or_inferred") not in ALLOWED_ORIGIN:
             errors.append(f"{label} has invalid reported_or_inferred value")
 
+        steps = suggestion.get("protocol_steps")
+        if not isinstance(steps, list) or not steps:
+            errors.append(f"{label} requires at least one protocol step")
+            steps = []
+        for step_index, step in enumerate(steps, start=1):
+            step_label = f"{label}.protocol_steps[{step_index}]"
+            if not isinstance(step, dict):
+                errors.append(f"{step_label} must be an object")
+                continue
+            missing_step = REQUIRED_STEP_FIELDS - step.keys()
+            if missing_step:
+                errors.append(
+                    f"{step_label} is missing fields: "
+                    + ", ".join(sorted(missing_step))
+                )
+            if step.get("value_basis") not in ALLOWED_VALUE_BASIS:
+                errors.append(f"{step_label} has invalid value_basis")
+
+        extrapolation = suggestion.get("extrapolation")
+        if not isinstance(extrapolation, dict) or not isinstance(
+            extrapolation.get("used"), bool
+        ):
+            errors.append(f"{label}.extrapolation requires a boolean used field")
+            extrapolation_used = False
+        else:
+            extrapolation_used = extrapolation["used"]
+            if extrapolation_used:
+                for field in (
+                    "source_conditions",
+                    "target_conditions",
+                    "justification",
+                    "key_differences",
+                ):
+                    if not extrapolation.get(field):
+                        errors.append(
+                            f"{label}.extrapolation requires {field} when used is true"
+                        )
+        if suggestion.get("reported_or_inferred") == "extrapolated" and not extrapolation_used:
+            errors.append(f"{label} must disclose extrapolation details")
+
+        validation_plan = suggestion.get("validation_plan")
+        if not isinstance(validation_plan, list) or not validation_plan:
+            errors.append(f"{label} requires a non-empty validation_plan")
+
         cited_text = " ".join(evidence_by_id.get(citation, "") for citation in citations)
         claim_text = " ".join(
-            str(suggestion.get(field, "")) for field in ("strategy", "rationale")
+            _flatten_text(suggestion.get(field))
+            for field in (
+                "strategy",
+                "rationale",
+                "applicable_conditions",
+                "protocol_steps",
+            )
         )
         unsupported_numbers = [
             match.group(0)
@@ -86,10 +174,14 @@ def validate_answer(
             not in cited_text.lower().replace(" ", "")
         ]
         if unsupported_numbers:
-            warnings.append(
+            message = (
                 f"{label} contains numerical values not found verbatim in cited evidence: "
                 + ", ".join(unsupported_numbers)
             )
+            if extrapolation_used:
+                warnings.append(message + "; disclosed as extrapolation")
+            else:
+                errors.append(message + "; extrapolation was not disclosed")
 
     if errors:
         return ValidationResult("reject", tuple(errors), tuple(warnings))

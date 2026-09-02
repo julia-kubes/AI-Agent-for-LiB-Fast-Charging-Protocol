@@ -13,6 +13,7 @@ from app.agent import ResearchAgent
 from app.config import Settings
 from app.demo import DemoLLM, DemoRetrieval
 from app.llm_client import OpenAICompatibleLLM
+from app.presentation import text_items
 from app.retrieval_adapter import NeonRetrievalAdapter
 
 
@@ -37,11 +38,69 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
                 f"- Origin: {suggestion.get('reported_or_inferred', 'unknown')}",
                 f"- Confidence: {suggestion.get('confidence', 'unknown')}",
                 "- Applicable conditions: "
-                + "; ".join(suggestion.get("applicable_conditions") or ["Not provided"]),
+                + "; ".join(
+                    text_items(
+                        suggestion.get("applicable_conditions"), ["Not provided"]
+                    )
+                ),
+                "- Extrapolation used: "
+                + str((suggestion.get("extrapolation") or {}).get("used", False)),
                 "- Limitations: "
-                + "; ".join(suggestion.get("limitations") or ["Not provided"]),
+                + "; ".join(
+                    text_items(suggestion.get("limitations"), ["Not provided"])
+                ),
                 "- Evidence chunks: "
-                + ", ".join(suggestion.get("evidence_chunk_ids") or ["None"]),
+                + ", ".join(
+                    text_items(suggestion.get("evidence_chunk_ids"), ["None"])
+                ),
+                "",
+            ]
+        )
+        steps = suggestion.get("protocol_steps") or []
+        lines.extend(["#### Protocol steps", ""])
+        for step_index, step in enumerate(steps, start=1):
+            if not isinstance(step, dict):
+                continue
+            lines.extend(
+                [
+                    f"{step_index}. **{step.get('stage', 'Stage')}**",
+                    f"   - Current/C-rate: {step.get('current_or_c_rate', 'Unresolved')}",
+                    f"   - Start: {step.get('start_condition', 'Not provided')}",
+                    f"   - Transition: {step.get('transition_criterion', 'Not provided')}",
+                    "   - Temperature constraints: "
+                    + "; ".join(text_items(step.get("temperature_constraints"), ["Not provided"])),
+                    "   - Monitoring: "
+                    + "; ".join(text_items(step.get("monitoring"), ["Not provided"])),
+                    "   - Stop conditions: "
+                    + "; ".join(text_items(step.get("stop_conditions"), ["Not provided"])),
+                    f"   - Value basis: {step.get('value_basis', 'unknown')}",
+                    "",
+                ]
+            )
+        extrapolation = suggestion.get("extrapolation") or {}
+        if extrapolation.get("used"):
+            lines.extend(
+                [
+                    "#### Extrapolation disclosure",
+                    "",
+                    f"- Justification: {extrapolation.get('justification', '')}",
+                    "- Source conditions: "
+                    + "; ".join(text_items(extrapolation.get("source_conditions"))),
+                    "- Target conditions: "
+                    + "; ".join(text_items(extrapolation.get("target_conditions"))),
+                    "- Key differences: "
+                    + "; ".join(text_items(extrapolation.get("key_differences"))),
+                    "",
+                ]
+            )
+        lines.extend(
+            [
+                "#### Validation plan",
+                "",
+                *[
+                    f"- {item}"
+                    for item in text_items(suggestion.get("validation_plan"))
+                ],
                 "",
             ]
         )
@@ -53,7 +112,7 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
         ("Follow-up questions", "follow_up_questions"),
     ):
         lines.extend([f"## {heading}", ""])
-        values = answer.get(field) or []
+        values = text_items(answer.get(field))
         lines.extend([f"- {value}" for value in values] or ["None provided."])
         lines.append("")
 
@@ -173,8 +232,45 @@ def main() -> None:
         st.write(suggestion.get("rationale", ""))
         st.caption(
             f"Confidence: {suggestion.get('confidence', 'unknown')} · "
-            f"Evidence: {', '.join(suggestion.get('evidence_chunk_ids', []))}"
+            "Evidence: "
+            + ", ".join(text_items(suggestion.get("evidence_chunk_ids"), ["None"]))
         )
+        steps = suggestion.get("protocol_steps") or []
+        if steps:
+            st.markdown("**Candidate protocol**")
+            for index, step in enumerate(steps, start=1):
+                if not isinstance(step, dict):
+                    continue
+                st.markdown(f"**Stage {index}: {step.get('stage', 'Stage')}**")
+                st.write(f"Current/C-rate: {step.get('current_or_c_rate', 'Unresolved')}")
+                st.write(f"Start: {step.get('start_condition', 'Not provided')}")
+                st.write(f"Transition: {step.get('transition_criterion', 'Not provided')}")
+                st.write(
+                    "Temperature constraints: "
+                    + "; ".join(text_items(step.get("temperature_constraints"), ["Not provided"]))
+                )
+                st.write(
+                    "Monitoring: "
+                    + "; ".join(text_items(step.get("monitoring"), ["Not provided"]))
+                )
+                st.write(
+                    "Stop conditions: "
+                    + "; ".join(text_items(step.get("stop_conditions"), ["Not provided"]))
+                )
+                st.caption(f"Value basis: {step.get('value_basis', 'unknown')}")
+        extrapolation = suggestion.get("extrapolation") or {}
+        if extrapolation.get("used"):
+            st.markdown("**Extrapolation disclosure**")
+            st.write(extrapolation.get("justification", ""))
+            st.caption(
+                "Key source–target differences: "
+                + "; ".join(text_items(extrapolation.get("key_differences"), ["Not provided"]))
+            )
+        validation_plan = text_items(suggestion.get("validation_plan"))
+        if validation_plan:
+            st.markdown("**Validation plan**")
+            for item in validation_plan:
+                st.write(f"- {item}")
 
     for heading, field in (
         ("Conflicting evidence", "conflicting_evidence"),
@@ -182,7 +278,7 @@ def main() -> None:
         ("Safety notes", "safety_notes"),
         ("Follow-up questions", "follow_up_questions"),
     ):
-        values = result.answer.get(field) or []
+        values = text_items(result.answer.get(field))
         if values:
             st.subheader(heading)
             for value in values:

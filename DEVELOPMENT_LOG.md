@@ -304,3 +304,122 @@ database connection information must never be recorded here.
   automated live runs.
 - The case tests handling of an ambiguous or incorrect model name, missing vehicle
   and pack specifications, mixed pulse-charging evidence, and safety boundaries.
+
+## 2026-09-01 - Character-separated response fields in reports
+
+**Observed behavior**
+
+- Some `limitations` values appeared as `T; h; e; ...` in the live evaluation
+  Markdown report.
+
+**Cause**
+
+- The model returned a single string for three `limitations` fields even though the
+  usual response shape is a list of strings.
+- The report formatter passed the string directly to `join`, which iterated over its
+  individual characters.
+
+**Fix**
+
+- Added one shared presentation helper that normalizes a string, collection, empty
+  value, or unexpected scalar into a list of display strings.
+- Applied it to limitations, applicable conditions, evidence IDs, and other list-like
+  answer sections in both the evaluation report and Streamlit clipboard/UI rendering.
+- Corrected the three already-generated NCM523 limitation lines in the saved readable
+  evaluation report. The raw JSONL remains unchanged as an audit record.
+
+**Verification**
+
+- Added a regression test covering string-valued limitations, conditions, and
+  evidence IDs.
+- All 14 unit tests pass.
+- No character-separated limitation lines remain in the saved evaluation report.
+
+## 2026-09-02 - Rejected answers remain visible to users
+
+**Observed behavior**
+
+- Deterministic validation can assign an answer a `reject` status when required
+  fields, evidence citations, confidence values, or origin classifications are
+  invalid.
+- The agent still returns the rejected answer, and the Streamlit interface displays
+  it as a normal result. The validation status and errors are shown only in the
+  expandable execution-details section.
+- The existing controlled repair attempt applies only to malformed or truncated
+  JSON. An answer that parses correctly but fails validation is not repaired.
+
+**Risk**
+
+- A user may act on or copy an answer that the application itself has classified as
+  invalid, particularly if the execution-details section is not opened.
+- The distinction between `pass`, `pass_with_warnings`, and `reject` is therefore not
+  sufficiently reflected in the user-facing behavior.
+
+**Required fix**
+
+- Do not present a rejected answer as a normal successful result.
+- Show a prominent user-facing rejection message and the relevant validation errors.
+- Decide whether to add one bounded validation-repair attempt for schema-valid
+  answers that fail deterministic validation.
+- If repair is implemented, disable retrieval tools during repair, preserve the
+  original answer and errors for auditability, revalidate the regenerated answer,
+  and stop after one failed repair.
+- Add tests confirming that rejected answers are blocked or clearly quarantined and
+  that `pass_with_warnings` remains visibly distinguishable from `pass`.
+
+**Status**
+
+- Open; documented for implementation and verification.
+
+## 2026-09-02 - Safeguard and validation improvement backlog
+
+**Current limitations**
+
+- The final output schema is supplied to the LLM as an instructional example rather
+  than enforced through a provider-level structured-output or JSON-schema feature.
+- Deterministic validation checks the required top-level fields but validates only
+  selected fields within each protocol suggestion. It does not currently enforce
+  the complete type and field contract represented by `FINAL_SCHEMA`.
+- The maximum of three protocol suggestions is a prompt instruction and is not
+  programmatically enforced after generation.
+- Numerical values that do not appear verbatim in cited evidence generate warnings
+  rather than automatic rejection.
+- Numerical support is checked through normalized text matching. This does not prove
+  that a cited passage supports the surrounding claim, units, interpretation, or
+  transfer to the target cell.
+- As recorded in `Rejected answers remain visible to users`, a rejected answer can
+  currently be displayed by the UI.
+- The controlled repair path handles malformed or truncated JSON but does not repair
+  an answer that parses correctly and subsequently fails deterministic validation.
+- Validation results are not fed back into the agentic evidence loop. They therefore
+  cannot currently trigger another search when a failure may reflect missing
+  evidence rather than a formatting problem.
+- Automated validation cannot establish that a literature-derived charging protocol
+  is experimentally safe, scientifically correct, optimal, or suitable for hardware
+  deployment.
+
+**Potential improvements**
+
+- Use provider-supported structured output or full JSON-schema enforcement when the
+  selected provider and model reliably support it.
+- Define and enforce the complete per-suggestion schema, including field presence,
+  field types, list types, allowed values, and a hard maximum of three suggestions.
+- Separate validation outcomes into issues that require answer-only repair, issues
+  that may justify one additional evidence search, and terminal safety-critical
+  rejection conditions.
+- Add one bounded post-validation correction path with full audit logging and no
+  possibility of an unbounded repair or retrieval loop.
+- Strengthen numerical checks to normalize equivalent units and distinguish values
+  copied from evidence from values inferred or transferred to different conditions.
+- Evaluate claim-to-citation support with labeled human-reviewed examples before
+  relying on any semantic-support validator.
+- Make `pass`, `pass_with_warnings`, and `reject` visibly distinct in the UI and in
+  copied or exported responses.
+- Preserve explicit language that all protocol suggestions are literature-derived
+  hypotheses requiring manufacturer-limit review and controlled experimental
+  validation.
+
+**Status**
+
+- Open backlog; prioritize user-visible rejection handling and complete schema
+  enforcement before adding more permissive generation behavior.
