@@ -13,19 +13,30 @@ class UIFormattingTests(unittest.TestCase):
                 {
                     "strategy": "Test strategy",
                     "rationale": "Test rationale",
+                    "designation": "primary",
+                    "protocol_status": "executable_candidate",
                     "reported_or_inferred": "synthesized",
                     "confidence": "medium",
-                    "applicable_conditions": ["25 °C", "pouch cell"],
+                    "target_conditions": {
+                        "chemistry": "graphite/NMC",
+                        "form_factor": "pouch cell",
+                        "temperature_c": 25,
+                    },
                     "protocol_steps": [
                         {
-                            "stage": "Initial charge",
-                            "current_or_c_rate": "1 C",
+                            "stage_number": 1,
+                            "stage_name": "Initial charge",
+                            "control_mode": "CC",
                             "start_condition": "10% SOC",
-                            "transition_criterion": "50% SOC",
-                            "temperature_constraints": ["25 °C"],
+                            "current": {"value": 1, "unit": "C", "basis": "reported"},
+                            "voltage_limit": {"value": 4.2, "unit": "V", "basis": "reported"},
+                            "temperature_limit": {"value": 25, "unit": "°C", "basis": "reported"},
+                            "transition": {
+                                "variable": "SOC", "operator": ">=", "value": 50,
+                                "unit": "%", "basis": "reported",
+                            },
                             "monitoring": ["Voltage"],
                             "stop_conditions": ["Manufacturer voltage limit"],
-                            "value_basis": "extrapolated",
                         }
                     ],
                     "extrapolation": {
@@ -55,6 +66,7 @@ class UIFormattingTests(unittest.TestCase):
             "synthesized",
             "25 °C",
             "pouch cell",
+            "executable_candidate",
             "Requires validation",
             "paper::chunk::0001",
             "Conflict",
@@ -64,7 +76,7 @@ class UIFormattingTests(unittest.TestCase):
             "Initial charge",
             "1 C",
             "10% SOC",
-            "50% SOC",
+            "SOC >= 50 %",
             "Provisional transfer",
             "Cell format",
             "Begin with a limited pilot test",

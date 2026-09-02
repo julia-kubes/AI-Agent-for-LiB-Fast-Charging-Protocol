@@ -128,6 +128,37 @@ class ResearchAgentTests(unittest.TestCase):
             )
         self.assertEqual(llm.calls, 3)
 
+    def test_structurally_invalid_protocol_is_repaired_once(self) -> None:
+        class InvalidStructureThenRepairedLLM:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.demo = DemoLLM()
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return self.demo.complete(messages, tools)
+                if self.calls == 2:
+                    return ModelReply(
+                        '{"summary":"Missing required sections"}',
+                        usage=Usage(100, 20),
+                    )
+                self.assert_tools_disabled(tools)
+                return self.demo.complete(messages, tools)
+
+            @staticmethod
+            def assert_tools_disabled(tools) -> None:
+                if tools is not None:
+                    raise AssertionError("Tools must be disabled during validation repair")
+
+        llm = InvalidStructureThenRepairedLLM()
+        result = ResearchAgent(DemoRetrieval(), llm, settings()).answer(
+            "What factors should constrain a fast-charging protocol?"
+        )
+        self.assertEqual(llm.calls, 3)
+        self.assertEqual(result.repair_attempts, 1)
+        self.assertEqual(result.validation.status, "pass")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,22 @@ def _safe_cell(value: Any) -> str:
     return str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
 
 
+def _parameter_text(parameter: Any) -> str:
+    if not isinstance(parameter, dict) or parameter.get("value") is None:
+        return "Unresolved"
+    return f"{parameter['value']} {parameter.get('unit', '')} ({parameter.get('basis', 'unknown')})"
+
+
+def _transition_text(transition: Any) -> str:
+    if not isinstance(transition, dict) or transition.get("value") is None:
+        return "Unresolved"
+    return (
+        f"{transition.get('variable', 'value')} {transition.get('operator', '')} "
+        f"{transition['value']} {transition.get('unit', '')} "
+        f"({transition.get('basis', 'unknown')})"
+    )
+
+
 def _answer_markdown(answer: dict[str, Any]) -> list[str]:
     lines = ["### Generated answer", "", answer.get("summary", "") or "*(No summary.)*", ""]
     suggestions = answer.get("protocol_suggestions") or []
@@ -35,14 +51,15 @@ def _answer_markdown(answer: dict[str, Any]) -> list[str]:
             [
                 f"**{index}. {suggestion.get('strategy', 'Unnamed suggestion')}**",
                 "",
+                f"- Designation: `{suggestion.get('designation', 'not supplied')}`",
+                f"- Protocol status: `{suggestion.get('protocol_status', 'not supplied')}`",
                 f"- Origin: `{suggestion.get('reported_or_inferred', 'not supplied')}`",
                 f"- Confidence: `{suggestion.get('confidence', 'not supplied')}`",
                 f"- Rationale: {suggestion.get('rationale', '')}",
-                "- Applicable conditions: "
+                "- Target conditions: "
                 + "; ".join(
-                    text_items(
-                        suggestion.get("applicable_conditions"), ["not supplied"]
-                    )
+                    f"{key}={value}"
+                    for key, value in (suggestion.get("target_conditions") or {}).items()
                 ),
                 "- Extrapolation used: "
                 + str((suggestion.get("extrapolation") or {}).get("used", False)),
@@ -59,24 +76,32 @@ def _answer_markdown(answer: dict[str, Any]) -> list[str]:
             ]
         )
         steps = suggestion.get("protocol_steps") or []
-        lines.extend(["##### Candidate protocol steps", ""])
+        lines.extend(
+            [
+                "##### Candidate protocol table",
+                "",
+                "| Stage | Mode | Start | Current | Voltage limit | Temperature limit | Transition |",
+                "|---:|---|---|---|---|---|---|",
+            ]
+        )
         for step_index, step in enumerate(steps, start=1):
             if not isinstance(step, dict):
                 continue
+            lines.append(
+                f"| {step.get('stage_number', step_index)}. {_safe_cell(step.get('stage_name', 'Stage'))} "
+                f"| {_safe_cell(step.get('control_mode'))} | {_safe_cell(step.get('start_condition'))} "
+                f"| {_safe_cell(_parameter_text(step.get('current')))} "
+                f"| {_safe_cell(_parameter_text(step.get('voltage_limit')))} "
+                f"| {_safe_cell(_parameter_text(step.get('temperature_limit')))} "
+                f"| {_safe_cell(_transition_text(step.get('transition')))} |"
+            )
             lines.extend(
                 [
-                    f"**Stage {step_index}: {step.get('stage', 'Stage')}**",
                     "",
-                    f"- Current/C-rate: {step.get('current_or_c_rate', 'unresolved')}",
-                    f"- Start: {step.get('start_condition', 'not supplied')}",
-                    f"- Transition: {step.get('transition_criterion', 'not supplied')}",
-                    "- Temperature constraints: "
-                    + "; ".join(text_items(step.get("temperature_constraints"), ["not supplied"])),
-                    "- Monitoring: "
+                    f"- Stage {step_index} monitoring: "
                     + "; ".join(text_items(step.get("monitoring"), ["not supplied"])),
-                    "- Stop conditions: "
+                    f"- Stage {step_index} stop conditions: "
                     + "; ".join(text_items(step.get("stop_conditions"), ["not supplied"])),
-                    f"- Value basis: `{step.get('value_basis', 'not supplied')}`",
                     "",
                 ]
             )

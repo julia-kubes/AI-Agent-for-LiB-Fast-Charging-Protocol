@@ -86,36 +86,71 @@ class DemoLLM:
             "protocol_suggestions": [
                 {
                     "strategy": "Conservative staged protocol development workflow.",
-                    "reported_or_inferred": "extrapolated",
-                    "applicable_conditions": ["Cell-specific validation required"],
+                    "designation": "primary",
+                    "protocol_status": "partially_specified",
+                    "reported_or_inferred": "synthesized",
+                    "target_conditions": {
+                        "chemistry": "Unspecified",
+                        "form_factor": "Unspecified",
+                        "capacity_ah": None,
+                        "temperature_c": None,
+                        "start_soc_percent": None,
+                        "end_soc_percent": None,
+                        "target_time_minutes": None,
+                    },
                     "protocol_steps": [
                         {
-                            "stage": "Initial characterization",
-                            "current_or_c_rate": "Unresolved until cell limits are supplied",
+                            "stage_number": 1,
+                            "stage_name": "Initial characterization",
+                            "control_mode": "other",
                             "start_condition": "Characterized cell at controlled temperature",
-                            "transition_criterion": "Proceed only after baseline measurements",
-                            "temperature_constraints": [
-                                "Remain within manufacturer limits"
-                            ],
+                            "current": {
+                                "value": None, "unit": "C", "basis": "unresolved",
+                                "source_value": None, "source_unit": None,
+                                "source_conditions": [], "adjustment_rule": None,
+                                "rationale": "Synthetic evidence has no current value.",
+                                "evidence_chunk_ids": [], "confidence": "low",
+                            },
+                            "voltage_limit": {
+                                "value": None, "unit": "V", "basis": "unresolved",
+                                "source_value": None, "source_unit": None,
+                                "source_conditions": [], "adjustment_rule": None,
+                                "rationale": "Synthetic evidence has no voltage limit.",
+                                "evidence_chunk_ids": [], "confidence": "low",
+                            },
+                            "temperature_limit": {
+                                "value": None, "unit": "°C", "basis": "unresolved",
+                                "source_value": None, "source_unit": None,
+                                "source_conditions": [], "adjustment_rule": None,
+                                "rationale": "Synthetic evidence has no temperature limit.",
+                                "evidence_chunk_ids": [], "confidence": "low",
+                            },
+                            "transition": {
+                                "variable": "other", "operator": "=", "value": None,
+                                "unit": "unresolved", "basis": "unresolved",
+                                "source_value": None, "source_unit": None,
+                                "source_conditions": [], "adjustment_rule": None,
+                                "rationale": "Baseline criteria are unresolved.",
+                                "evidence_chunk_ids": [], "confidence": "low",
+                            },
                             "monitoring": [
                                 "Cell voltage",
                                 "Cell temperature",
                                 "Lithium-plating indicator",
                             ],
                             "stop_conditions": [
-                                "Stop at any manufacturer limit or abnormal response"
+                                "Stop after any abnormal voltage or temperature response"
                             ],
-                            "value_basis": "unresolved",
                         }
                     ],
                     "rationale": "The demonstration evidence cautions against unvalidated transfer.",
                     "evidence_chunk_ids": ["demo-paper::chunk::0001"],
                     "extrapolation": {
-                        "used": True,
-                        "source_conditions": ["Synthetic demonstration evidence"],
-                        "target_conditions": ["User-specified cell"],
-                        "justification": "Demonstrates the required disclosure structure.",
-                        "key_differences": ["No real experimental protocol is available"],
+                        "used": False,
+                        "source_conditions": [],
+                        "target_conditions": [],
+                        "justification": "",
+                        "key_differences": [],
                     },
                     "validation_plan": [
                         "Supply real evidence and cell limits before selecting current values"

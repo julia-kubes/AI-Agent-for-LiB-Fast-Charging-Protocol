@@ -17,6 +17,24 @@ from app.presentation import text_items
 from app.retrieval_adapter import NeonRetrievalAdapter
 
 
+def format_parameter(parameter: Any) -> str:
+    """Render one structured protocol parameter without narrative filler."""
+
+    if not isinstance(parameter, dict) or parameter.get("value") is None:
+        return "Unresolved"
+    return f"{parameter['value']} {parameter.get('unit', '')} ({parameter.get('basis', 'unknown')})"
+
+
+def format_transition(transition: Any) -> str:
+    if not isinstance(transition, dict) or transition.get("value") is None:
+        return "Unresolved"
+    return (
+        f"{transition.get('variable', 'value')} {transition.get('operator', '')} "
+        f"{transition['value']} {transition.get('unit', '')} "
+        f"({transition.get('basis', 'unknown')})"
+    )
+
+
 def format_response_for_clipboard(answer: dict[str, Any]) -> str:
     """Format every generated-answer field as readable Markdown text."""
 
@@ -35,13 +53,14 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
                 "",
                 str(suggestion.get("rationale") or ""),
                 "",
+                f"- Designation: {suggestion.get('designation', 'unknown')}",
+                f"- Protocol status: {suggestion.get('protocol_status', 'unknown')}",
                 f"- Origin: {suggestion.get('reported_or_inferred', 'unknown')}",
                 f"- Confidence: {suggestion.get('confidence', 'unknown')}",
-                "- Applicable conditions: "
+                "- Target conditions: "
                 + "; ".join(
-                    text_items(
-                        suggestion.get("applicable_conditions"), ["Not provided"]
-                    )
+                    f"{key}={value}"
+                    for key, value in (suggestion.get("target_conditions") or {}).items()
                 ),
                 "- Extrapolation used: "
                 + str((suggestion.get("extrapolation") or {}).get("used", False)),
@@ -56,24 +75,43 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
                 "",
             ]
         )
+        if "applicable_conditions" in suggestion:
+            lines.extend(
+                [
+                    "- Applicable conditions: "
+                    + "; ".join(
+                        text_items(
+                            suggestion.get("applicable_conditions"), ["Not provided"]
+                        )
+                    ),
+                    "",
+                ]
+            )
         steps = suggestion.get("protocol_steps") or []
-        lines.extend(["#### Protocol steps", ""])
+        lines.extend(
+            [
+                "#### Protocol steps",
+                "",
+                "| Stage | Mode | Start | Current | Voltage limit | Temperature limit | Transition |",
+                "|---:|---|---|---|---|---|---|",
+            ]
+        )
         for step_index, step in enumerate(steps, start=1):
             if not isinstance(step, dict):
                 continue
+            lines.append(
+                f"| {step.get('stage_number', step_index)}. {step.get('stage_name', 'Stage')} "
+                f"| {step.get('control_mode', '')} | {step.get('start_condition', '')} "
+                f"| {format_parameter(step.get('current'))} "
+                f"| {format_parameter(step.get('voltage_limit'))} "
+                f"| {format_parameter(step.get('temperature_limit'))} "
+                f"| {format_transition(step.get('transition'))} |"
+            )
             lines.extend(
                 [
-                    f"{step_index}. **{step.get('stage', 'Stage')}**",
-                    f"   - Current/C-rate: {step.get('current_or_c_rate', 'Unresolved')}",
-                    f"   - Start: {step.get('start_condition', 'Not provided')}",
-                    f"   - Transition: {step.get('transition_criterion', 'Not provided')}",
-                    "   - Temperature constraints: "
-                    + "; ".join(text_items(step.get("temperature_constraints"), ["Not provided"])),
-                    "   - Monitoring: "
-                    + "; ".join(text_items(step.get("monitoring"), ["Not provided"])),
-                    "   - Stop conditions: "
-                    + "; ".join(text_items(step.get("stop_conditions"), ["Not provided"])),
-                    f"   - Value basis: {step.get('value_basis', 'unknown')}",
+                    "",
+                    "  - Monitoring: " + "; ".join(text_items(step.get("monitoring"))),
+                    "  - Stop conditions: " + "; ".join(text_items(step.get("stop_conditions"))),
                     "",
                 ]
             )
@@ -231,33 +269,38 @@ def main() -> None:
         st.markdown(f"**{suggestion.get('strategy', 'Suggestion')}**")
         st.write(suggestion.get("rationale", ""))
         st.caption(
+            f"{suggestion.get('designation', 'unknown').title()} · "
+            f"Status: {suggestion.get('protocol_status', 'unknown')} · "
             f"Confidence: {suggestion.get('confidence', 'unknown')} · "
             "Evidence: "
             + ", ".join(text_items(suggestion.get("evidence_chunk_ids"), ["None"]))
         )
         steps = suggestion.get("protocol_steps") or []
         if steps:
-            st.markdown("**Candidate protocol**")
+            st.markdown("**Candidate protocol table**")
+            st.table(
+                [
+                    {
+                        "Stage": f"{step.get('stage_number', index)}. {step.get('stage_name', 'Stage')}",
+                        "Mode": step.get("control_mode", ""),
+                        "Start": step.get("start_condition", ""),
+                        "Current": format_parameter(step.get("current")),
+                        "Voltage limit": format_parameter(step.get("voltage_limit")),
+                        "Temperature limit": format_parameter(step.get("temperature_limit")),
+                        "Transition": format_transition(step.get("transition")),
+                    }
+                    for index, step in enumerate(steps, start=1)
+                    if isinstance(step, dict)
+                ]
+            )
             for index, step in enumerate(steps, start=1):
-                if not isinstance(step, dict):
-                    continue
-                st.markdown(f"**Stage {index}: {step.get('stage', 'Stage')}**")
-                st.write(f"Current/C-rate: {step.get('current_or_c_rate', 'Unresolved')}")
-                st.write(f"Start: {step.get('start_condition', 'Not provided')}")
-                st.write(f"Transition: {step.get('transition_criterion', 'Not provided')}")
-                st.write(
-                    "Temperature constraints: "
-                    + "; ".join(text_items(step.get("temperature_constraints"), ["Not provided"]))
-                )
-                st.write(
-                    "Monitoring: "
-                    + "; ".join(text_items(step.get("monitoring"), ["Not provided"]))
-                )
-                st.write(
-                    "Stop conditions: "
-                    + "; ".join(text_items(step.get("stop_conditions"), ["Not provided"]))
-                )
-                st.caption(f"Value basis: {step.get('value_basis', 'unknown')}")
+                if isinstance(step, dict):
+                    st.caption(
+                        f"Stage {index} monitoring: "
+                        + "; ".join(text_items(step.get("monitoring"), ["Not provided"]))
+                        + " · Stop: "
+                        + "; ".join(text_items(step.get("stop_conditions"), ["Not provided"]))
+                    )
         extrapolation = suggestion.get("extrapolation") or {}
         if extrapolation.get("used"):
             st.markdown("**Extrapolation disclosure**")

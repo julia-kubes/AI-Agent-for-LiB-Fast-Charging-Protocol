@@ -13,6 +13,7 @@ from .prompts import (
     final_answer_instruction,
     initial_user_message,
     repair_answer_instruction,
+    repair_validation_instruction,
 )
 from .schemas import AgentResult, Usage
 from .scope import is_out_of_domain, out_of_domain_answer
@@ -107,6 +108,36 @@ class ResearchAgent:
                             "LLM final answer remained invalid after one repair attempt"
                         ) from repair_error
                 validation = validate_answer(answer, evidence)
+                if validation.status == "reject" and repair_attempts == 0:
+                    repair_attempts = 1
+                    messages.append(
+                        {"role": "assistant", "content": json.dumps(answer)}
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": repair_validation_instruction(
+                                evidence, validation.errors
+                            ),
+                        }
+                    )
+                    repaired = self.llm.complete(messages, tools=None)
+                    rounds += 1
+                    total_usage = Usage(
+                        total_usage.input_tokens + repaired.usage.input_tokens,
+                        total_usage.output_tokens + repaired.usage.output_tokens,
+                    )
+                    if repaired.tool_calls:
+                        raise RuntimeError(
+                            "LLM returned tool calls during protocol validation repair"
+                        )
+                    answer = parse_final_answer(repaired.content)
+                    validation = validate_answer(answer, evidence)
+                    if validation.status == "reject":
+                        raise RuntimeError(
+                            "LLM protocol remained invalid after one repair attempt: "
+                            + "; ".join(validation.errors)
+                        )
                 return AgentResult(
                     answer,
                     evidence,
