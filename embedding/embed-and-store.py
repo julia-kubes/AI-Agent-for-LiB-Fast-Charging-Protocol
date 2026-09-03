@@ -139,9 +139,26 @@ def validate_chunk(value: Any, source: Path, line_number: int) -> dict[str, Any]
     return value
 
 
+def is_embedding_eligible(value: Any) -> bool:
+    """Return False for chunks explicitly quarantined or not approved."""
+    if not isinstance(value, dict):
+        return True
+
+    metadata = value.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    quarantined = value.get("quarantined", metadata.get("quarantined", False))
+    validation_status = value.get(
+        "validation_status", metadata.get("validation_status", "approved")
+    )
+    return quarantined is not True and validation_status == "approved"
+
+
 def load_chunks(files: Sequence[Path]) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+    skipped = 0
     for path in files:
         with path.open("r", encoding="utf-8") as file:
             for line_number, line in enumerate(file, start=1):
@@ -151,6 +168,9 @@ def load_chunks(files: Sequence[Path]) -> list[dict[str, Any]]:
                     raw = json.loads(line)
                 except json.JSONDecodeError as error:
                     raise ValueError(f"{path}:{line_number}: invalid JSON: {error}") from error
+                if not is_embedding_eligible(raw):
+                    skipped += 1
+                    continue
                 chunk = validate_chunk(raw, path, line_number)
                 chunk_id = chunk["chunk_id"]
                 if chunk_id in seen_ids:
@@ -158,7 +178,9 @@ def load_chunks(files: Sequence[Path]) -> list[dict[str, Any]]:
                 seen_ids.add(chunk_id)
                 chunks.append(chunk)
     if not chunks:
-        raise ValueError("Chunk files contained no records")
+        raise ValueError("Chunk files contained no embedding-eligible records")
+    if skipped:
+        print(f"Skipped {skipped} quarantined or unapproved chunks.")
     return chunks
 
 
