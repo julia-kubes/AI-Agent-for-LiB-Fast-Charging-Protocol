@@ -18,7 +18,7 @@ from .prompts import (
 from .schemas import AgentResult, Usage
 from .scope import is_out_of_domain, out_of_domain_answer
 from .tools import ToolExecutor
-from .validation import parse_final_answer, validate_answer
+from .validation import normalize_user_specified_values, parse_final_answer, validate_answer
 
 
 class ResearchAgent:
@@ -73,7 +73,7 @@ class ResearchAgent:
                 try:
                     if reply.finish_reason == "length":
                         raise ValueError("response reached the output-token limit")
-                    answer = parse_final_answer(reply.content)
+                    answer = normalize_user_specified_values(parse_final_answer(reply.content))
                 except ValueError as first_error:
                     repair_attempts = 1
                     messages.append(
@@ -102,7 +102,9 @@ class ResearchAgent:
                             "LLM final answer remained truncated after one repair attempt"
                         )
                     try:
-                        answer = parse_final_answer(repaired.content)
+                        answer = normalize_user_specified_values(
+                            parse_final_answer(repaired.content)
+                        )
                     except ValueError as repair_error:
                         raise RuntimeError(
                             "LLM final answer remained invalid after one repair attempt"
@@ -131,7 +133,9 @@ class ResearchAgent:
                         raise RuntimeError(
                             "LLM returned tool calls during protocol validation repair"
                         )
-                    answer = parse_final_answer(repaired.content)
+                    answer = normalize_user_specified_values(
+                        parse_final_answer(repaired.content)
+                    )
                     validation = validate_answer(answer, evidence)
                     if validation.status == "reject":
                         raise RuntimeError(

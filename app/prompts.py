@@ -21,12 +21,14 @@ when the evidence supports it. Do not pad the response with overlapping variants
 must be structured records, not narrative paragraphs.
 
 Every operational current, voltage, temperature, time, SOC, or transition value must be labeled as:
-(1) reported: the value appears in the cited evidence under sufficiently similar conditions;
-(2) evidence_informed_transfer: the value is adapted from cited literature, with the relevant source
+(1) user_specified: the exact value was supplied by the user as a target condition; do not cite it as
+a literature result;
+(2) reported: the value appears in the cited evidence under sufficiently similar conditions;
+(3) evidence_informed_transfer: the value is adapted from cited literature, with the relevant source
 conditions, source-to-target differences, adjustment logic, and scientific rationale disclosed;
-(3) engineering_judgment: the cited literature supports the mechanism, range, or design direction,
+(4) engineering_judgment: the cited literature supports the mechanism, range, or design direction,
 but the selected value is a transparent experimental assumption rather than a reported result; or
-(4) unresolved, with a null value. Evidence-informed transfer and engineering judgment are legitimate
+(5) unresolved, with a null value. Evidence-informed transfer and engineering judgment are legitimate
 parts of protocol design. Do not imply that their proposed values were directly reported, and do not
 choose a value solely because it meets the requested charging time.
 
@@ -80,7 +82,7 @@ FINAL_SCHEMA: dict[str, Any] = {
                     "current": {
                         "value": "number | null",
                         "unit": "C | A | mA",
-                        "basis": "reported | evidence_informed_transfer | engineering_judgment | unresolved",
+                        "basis": "user_specified | reported | evidence_informed_transfer | engineering_judgment | unresolved",
                         "source_value": "number | null",
                         "source_unit": "string | null",
                         "source_conditions": ["string"],
@@ -96,7 +98,7 @@ FINAL_SCHEMA: dict[str, Any] = {
                         "operator": ">= | <= | > | < | =",
                         "value": "number | null",
                         "unit": "string",
-                        "basis": "reported | evidence_informed_transfer | engineering_judgment | unresolved",
+                        "basis": "user_specified | reported | evidence_informed_transfer | engineering_judgment | unresolved",
                         "source_value": "number | null",
                         "source_unit": "string | null",
                         "source_conditions": ["string"],
@@ -228,8 +230,12 @@ def repair_validation_instruction(
     ids = [chunk.chunk_id for chunk in evidence]
     return (
         "Your answer parsed as JSON but failed deterministic protocol validation. "
-        "Regenerate the entire answer once and correct every listed error. Do not add "
-        "commentary or use tools. Validation errors:\n"
+        "Regenerate one concise primary protocol and correct every listed error. Do not add "
+        "commentary or use tools. In particular, never preserve a `reported` label when the "
+        "value is absent from its cited evidence. Relabel an exact user target as "
+        "`user_specified`; otherwise use `evidence_informed_transfer` or "
+        "`engineering_judgment` with the required reasoning and disclosure, or mark the value "
+        "`unresolved`. Do not invent a new citation to defend the old label. Validation errors:\n"
         + json.dumps(list(errors), ensure_ascii=False)
         + "\nOnly cite these chunk IDs: "
         + json.dumps(ids)

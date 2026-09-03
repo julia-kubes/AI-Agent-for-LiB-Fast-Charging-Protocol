@@ -8,12 +8,13 @@ The revised policy permits bounded scientific reasoning while preserving provena
 
 ## Reasoning categories
 
-Every operational value is assigned one of four bases:
+Every operational value is assigned one of five bases:
 
-1. `reported`: The proposed value is directly reported in cited evidence. Exact value-and-unit verification remains a hard requirement.
-2. `evidence_informed_transfer`: The value is adapted from cited literature to different target conditions. The response must disclose source conditions, its adjustment logic, rationale, citations, and confidence. A source value that cannot be matched verbatim now produces a review warning rather than automatic rejection.
-3. `engineering_judgment`: The literature supports the relevant mechanism, range, or design direction, but the selected number is an explicit experimental assumption. It requires cited context and a scientific rationale and cannot claim high confidence.
-4. `unresolved`: The evidence and defensible reasoning are insufficient. The value must remain null.
+1. `user_specified`: The exact value was supplied by the user as a target temperature, SOC endpoint, or time. It is not cited as a literature result, and validation checks it against the structured target conditions.
+2. `reported`: The proposed value is directly reported in cited evidence. Exact value-and-unit verification remains a hard requirement.
+3. `evidence_informed_transfer`: The value is adapted from cited literature to different target conditions. The response must disclose source conditions, its adjustment logic, rationale, citations, and confidence. A source value that cannot be matched verbatim now produces a review warning rather than automatic rejection.
+4. `engineering_judgment`: The literature supports the relevant mechanism, range, or design direction, but the selected number is an explicit experimental assumption. It requires cited context and a scientific rationale and cannot claim high confidence.
+5. `unresolved`: The evidence and defensible reasoning are insufficient. The value must remain null.
 
 ## Protocol status
 
@@ -47,6 +48,12 @@ The system prompt now explicitly authorizes evidence-informed transfer and engin
 
 The deterministic validator recognizes the four reasoning categories and three protocol statuses. Exact text matching applies only to values claimed as reported. Evidence-transfer fields are checked for adequate reasoning and provenance; a non-verbatim source value is flagged for review instead of rejected. Engineering judgments require cited context, rationale, disclosure, and low or medium confidence.
 
+The labeling repair adds `user_specified` as a fifth category. Temperature limits and SOC/time transitions that exactly match the structured target conditions are canonicalized to this basis, with literature citation fields removed. This prevents a user-requested operating condition from being misrepresented as a published result. Only unresolved current and transition values make a candidate operationally incomplete; unresolved voltage or temperature limits remain visible gaps but do not contradict the prompt's definition of a measurable starting protocol.
+
+### `app/agent.py`
+
+User-target normalization is applied after initial JSON parsing and after either repair path, before deterministic validation. This makes the correction reliable even when the language model initially assigns the wrong provenance label.
+
 ### `app/ui.py`
 
 The interface now labels the relevant section “Evidence transfer and reasoning disclosure” so users are not led to treat all non-reported values as a single undifferentiated extrapolation category.
@@ -67,7 +74,7 @@ Run:
 & '.\.venv\Scripts\python.exe' -m unittest discover -s tests -v
 ```
 
-At implementation time, all 25 tests passed.
+At implementation time, all 30 tests passed.
 
 ## Recommended evaluation
 

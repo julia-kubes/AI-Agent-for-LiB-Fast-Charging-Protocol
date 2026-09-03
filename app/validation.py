@@ -18,11 +18,58 @@ ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_ORIGIN = {"reported", "synthesized", "extrapolated", "inferred"}
 ALLOWED_DESIGNATION = {"primary", "alternative"}
 ALLOWED_STATUS = {"experimental_starting_protocol", "literature_transferred_candidate", "partially_specified"}
-ALLOWED_VALUE_BASIS = {"reported", "evidence_informed_transfer", "engineering_judgment", "unresolved"}
+ALLOWED_VALUE_BASIS = {"user_specified", "reported", "evidence_informed_transfer", "engineering_judgment", "unresolved"}
 ALLOWED_CONTROL_MODE = {"CC", "CV", "rest", "terminate", "other"}
 ALLOWED_TRANSITION_VARIABLE = {"SOC", "voltage", "current", "time", "anode_potential", "other"}
 ALLOWED_OPERATOR = {">=", "<=", ">", "<", "="}
 VAGUE_OPERATIONAL_LANGUAGE = re.compile(r"\b(as needed|near (?:the )?limit|approaches?|low threshold|manufacturer limit|when appropriate|if necessary)\b", re.IGNORECASE)
+
+
+def normalize_user_specified_values(answer: dict[str, Any]) -> dict[str, Any]:
+    """Canonicalize operational values that exactly repeat structured user targets."""
+
+    for suggestion in answer.get("protocol_suggestions") or []:
+        if not isinstance(suggestion, dict):
+            continue
+        target = suggestion.get("target_conditions")
+        if not isinstance(target, dict):
+            continue
+        for step in suggestion.get("protocol_steps") or []:
+            if not isinstance(step, dict):
+                continue
+            candidates: list[tuple[Any, Any, str]] = [
+                (step.get("temperature_limit"), target.get("temperature_c"), "temperature")
+            ]
+            transition = step.get("transition")
+            if isinstance(transition, dict):
+                if transition.get("variable") == "SOC":
+                    candidates.extend(
+                        [
+                            (transition, target.get("start_soc_percent"), "SOC"),
+                            (transition, target.get("end_soc_percent"), "SOC"),
+                        ]
+                    )
+                elif transition.get("variable") == "time":
+                    candidates.append(
+                        (transition, target.get("target_time_minutes"), "time")
+                    )
+            for parameter, expected, target_name in candidates:
+                if not isinstance(parameter, dict) or expected is None:
+                    continue
+                if parameter.get("value") != expected:
+                    continue
+                parameter.update(
+                    {
+                        "basis": "user_specified",
+                        "source_value": None,
+                        "source_unit": None,
+                        "source_conditions": [],
+                        "adjustment_rule": None,
+                        "rationale": f"The value is the user's specified target {target_name} condition.",
+                        "evidence_chunk_ids": [],
+                    }
+                )
+    return answer
 
 
 def parse_final_answer(content: str | None) -> dict[str, Any]:
@@ -63,7 +110,7 @@ def _validate_citations(citations: Any, label: str, allowed_ids: set[str], error
     return [citation for citation in citations if citation in allowed_ids]
 
 
-def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evidence_by_id: dict[str, str], errors: list[str], warnings: list[str]) -> str | None:
+def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evidence_by_id: dict[str, str], target: dict[str, Any], errors: list[str], warnings: list[str]) -> str | None:
     if not isinstance(parameter, dict):
         errors.append(f"{label} must be an object")
         return None
@@ -88,8 +135,26 @@ def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evide
         errors.append(f"{label} requires a numeric value")
     if not isinstance(unit, str) or not unit.strip():
         errors.append(f"{label} requires a unit")
-    if not citations:
+    if not citations and basis != "user_specified":
         errors.append(f"{label} requires field-level evidence_chunk_ids")
+    if basis == "user_specified":
+        if citations:
+            errors.append(f"{label} must not cite literature for a user-specified value")
+        if parameter.get("source_value") is not None or parameter.get("source_unit") is not None:
+            errors.append(f"{label} must not use literature source fields for a user-specified value")
+        if not parameter.get("rationale"):
+            errors.append(f"{label} must identify the value as a user-supplied target")
+        expected: list[Any] = []
+        if label.endswith(".temperature_limit"):
+            expected = [target.get("temperature_c")]
+        elif label.endswith(".transition") and parameter.get("variable") == "SOC":
+            expected = [target.get("start_soc_percent"), target.get("end_soc_percent")]
+        elif label.endswith(".transition") and parameter.get("variable") == "time":
+            expected = [target.get("target_time_minutes")]
+        else:
+            errors.append(f"{label} cannot use user_specified because it is not a mapped target condition")
+        if expected and value not in expected:
+            errors.append(f"{label} user-specified value does not match the target conditions")
     if basis == "reported" and isinstance(value, (int, float)) and isinstance(unit, str) and not _evidence_contains(value, unit, cited_text):
         errors.append(f"{label} reported value was not found in its cited evidence")
     if basis == "evidence_informed_transfer":
@@ -187,12 +252,12 @@ def validate_answer(answer: dict[str, Any], evidence: Sequence[EvidenceChunk]) -
             if VAGUE_OPERATIONAL_LANGUAGE.search(operational_text):
                 warnings.append(f"{step_label} contains vague operational language")
             for field in ("current", "voltage_limit", "temperature_limit"):
-                basis = _validate_parameter(step.get(field), f"{step_label}.{field}", allowed_ids, evidence_by_id, errors, warnings)
-                unresolved_critical |= basis == "unresolved"
+                basis = _validate_parameter(step.get(field), f"{step_label}.{field}", allowed_ids, evidence_by_id, target if isinstance(target, dict) else {}, errors, warnings)
+                unresolved_critical |= field == "current" and basis == "unresolved"
                 reasoned_fields += basis in {"evidence_informed_transfer", "engineering_judgment"}
                 judgment_fields += basis == "engineering_judgment"
             transition = step.get("transition")
-            transition_basis = _validate_parameter(transition, f"{step_label}.transition", allowed_ids, evidence_by_id, errors, warnings)
+            transition_basis = _validate_parameter(transition, f"{step_label}.transition", allowed_ids, evidence_by_id, target if isinstance(target, dict) else {}, errors, warnings)
             unresolved_critical |= transition_basis == "unresolved"
             reasoned_fields += transition_basis in {"evidence_informed_transfer", "engineering_judgment"}
             judgment_fields += transition_basis == "engineering_judgment"

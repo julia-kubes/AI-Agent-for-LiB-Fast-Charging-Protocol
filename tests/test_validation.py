@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.schemas import EvidenceChunk
-from app.validation import parse_final_answer, validate_answer
+from app.validation import normalize_user_specified_values, parse_final_answer, validate_answer
 
 
 def parameter(value, unit, basis="reported") -> dict:
@@ -212,6 +212,79 @@ class ValidationTests(unittest.TestCase):
         result = validate_answer(answer, self.evidence)
         self.assertEqual(result.status, "reject")
         self.assertTrue(any("high confidence" in error for error in result.errors))
+
+    def test_user_specified_temperature_and_soc_target_pass(self) -> None:
+        answer = base_answer()
+        step = answer["protocol_suggestions"][0]["protocol_steps"][0]
+        step["temperature_limit"].update(
+            {
+                "value": 25,
+                "unit": "°C",
+                "basis": "user_specified",
+                "source_value": None,
+                "source_unit": None,
+                "source_conditions": [],
+                "adjustment_rule": None,
+                "rationale": "The user requested operation at 25 °C.",
+                "evidence_chunk_ids": [],
+            }
+        )
+        step["transition"].update(
+            {
+                "value": 80,
+                "unit": "%",
+                "basis": "user_specified",
+                "source_value": None,
+                "source_unit": None,
+                "source_conditions": [],
+                "adjustment_rule": None,
+                "rationale": "The user requested an 80% SOC endpoint.",
+                "evidence_chunk_ids": [],
+            }
+        )
+        self.assertEqual(validate_answer(answer, self.evidence).status, "pass")
+
+    def test_user_specified_value_must_match_target_conditions(self) -> None:
+        answer = base_answer()
+        temperature = answer["protocol_suggestions"][0]["protocol_steps"][0][
+            "temperature_limit"
+        ]
+        temperature.update(
+            {
+                "value": 30,
+                "basis": "user_specified",
+                "rationale": "Claimed user target.",
+                "evidence_chunk_ids": [],
+            }
+        )
+        result = validate_answer(answer, self.evidence)
+        self.assertEqual(result.status, "reject")
+        self.assertTrue(any("does not match the target conditions" in error for error in result.errors))
+
+    def test_target_values_are_deterministically_reclassified(self) -> None:
+        answer = base_answer()
+        step = answer["protocol_suggestions"][0]["protocol_steps"][0]
+        step["temperature_limit"]["basis"] = "reported"
+        step["transition"]["basis"] = "reported"
+
+        normalize_user_specified_values(answer)
+
+        self.assertEqual(step["temperature_limit"]["basis"], "user_specified")
+        self.assertEqual(step["temperature_limit"]["evidence_chunk_ids"], [])
+        self.assertEqual(step["transition"]["basis"], "user_specified")
+        self.assertEqual(step["transition"]["source_value"], None)
+
+    def test_unresolved_noncritical_limits_do_not_block_experimental_protocol(self) -> None:
+        answer = base_answer()
+        suggestion = answer["protocol_suggestions"][0]
+        suggestion["protocol_status"] = "experimental_starting_protocol"
+        suggestion["protocol_steps"][0]["voltage_limit"] = parameter(
+            None, "V", "unresolved"
+        )
+        suggestion["protocol_steps"][0]["temperature_limit"] = parameter(
+            None, "°C", "unresolved"
+        )
+        self.assertEqual(validate_answer(answer, self.evidence).status, "pass")
 
     def test_experimental_protocol_cannot_contain_unresolved_parameter(self) -> None:
         answer = base_answer()
