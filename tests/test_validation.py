@@ -30,7 +30,7 @@ def base_answer() -> dict:
             {
                 "strategy": "Use the reported protocol.",
                 "designation": "primary",
-                "protocol_status": "executable_candidate",
+                "protocol_status": "literature_transferred_candidate",
                 "reported_or_inferred": "reported",
                 "target_conditions": {
                     "chemistry": "graphite/NMC",
@@ -102,22 +102,24 @@ class ValidationTests(unittest.TestCase):
         content = "```json\n" + __import__("json").dumps(base_answer()) + "\n```"
         self.assertEqual(parse_final_answer(content), base_answer())
 
-    def test_unanchored_extrapolation_is_rejected(self) -> None:
+    def test_evidence_transfer_requires_reasoning(self) -> None:
         answer = base_answer()
         current = answer["protocol_suggestions"][0]["protocol_steps"][0]["current"]
         current.update(
             {
                 "value": 2,
-                "basis": "anchored_extrapolation",
+                "basis": "evidence_informed_transfer",
                 "source_value": None,
                 "source_unit": None,
+                "source_conditions": [],
+                "adjustment_rule": None,
             }
         )
         result = validate_answer(answer, self.evidence)
         self.assertEqual(result.status, "reject")
-        self.assertTrue(any("source_value" in error for error in result.errors))
+        self.assertTrue(any("source_conditions" in error for error in result.errors))
 
-    def test_anchored_extrapolation_passes(self) -> None:
+    def test_evidence_informed_transfer_passes_without_exact_proposed_value_in_evidence(self) -> None:
         answer = base_answer()
         suggestion = answer["protocol_suggestions"][0]
         suggestion["reported_or_inferred"] = "extrapolated"
@@ -132,7 +134,7 @@ class ValidationTests(unittest.TestCase):
         current.update(
             {
                 "value": 0.5,
-                "basis": "anchored_extrapolation",
+                "basis": "evidence_informed_transfer",
                 "source_value": 1,
                 "source_unit": "C",
                 "source_conditions": ["Reported laboratory cell at 25 °C"],
@@ -142,14 +144,84 @@ class ValidationTests(unittest.TestCase):
         )
         self.assertEqual(validate_answer(answer, self.evidence).status, "pass")
 
-    def test_executable_protocol_cannot_contain_unresolved_parameter(self) -> None:
+    def test_nonverbatim_transfer_anchor_warns_instead_of_rejecting(self) -> None:
         answer = base_answer()
+        suggestion = answer["protocol_suggestions"][0]
+        suggestion["reported_or_inferred"] = "extrapolated"
+        suggestion["extrapolation"] = {
+            "used": True,
+            "source_conditions": ["Reported laboratory cell"],
+            "target_conditions": ["Target pouch cell"],
+            "justification": "Transfer with a source value requiring human review.",
+            "key_differences": ["Different form factor"],
+        }
+        current = suggestion["protocol_steps"][0]["current"]
+        current.update(
+            {
+                "value": 0.75,
+                "basis": "evidence_informed_transfer",
+                "source_value": 1.5,
+                "source_unit": "C",
+                "source_conditions": ["Reported laboratory cell"],
+                "adjustment_rule": "Reduce the source current by half.",
+                "rationale": "Use a conservative transfer for the target cell.",
+            }
+        )
+        result = validate_answer(answer, self.evidence)
+        self.assertEqual(result.status, "pass_with_warnings")
+        self.assertTrue(any("not found verbatim" in warning for warning in result.warnings))
+
+    def test_engineering_judgment_passes_with_disclosure_and_cited_context(self) -> None:
+        answer = base_answer()
+        suggestion = answer["protocol_suggestions"][0]
+        suggestion["protocol_status"] = "experimental_starting_protocol"
+        suggestion["reported_or_inferred"] = "inferred"
+        suggestion["extrapolation"] = {
+            "used": True,
+            "source_conditions": ["Reported graphite/NMC laboratory evidence"],
+            "target_conditions": ["Target pouch cell"],
+            "justification": "Select a conservative experimental starting point.",
+            "key_differences": ["Different cell format and capacity"],
+        }
+        current = suggestion["protocol_steps"][0]["current"]
+        current.update(
+            {
+                "value": 0.75,
+                "basis": "engineering_judgment",
+                "source_value": None,
+                "source_unit": None,
+                "source_conditions": ["Literature establishes the relevant charging mechanism"],
+                "adjustment_rule": "Select below the directly reported 1 C condition.",
+                "rationale": "A conservative initial test value for the changed form factor.",
+                "confidence": "low",
+            }
+        )
+        self.assertEqual(validate_answer(answer, self.evidence).status, "pass")
+
+    def test_engineering_judgment_cannot_claim_high_confidence(self) -> None:
+        answer = base_answer()
+        suggestion = answer["protocol_suggestions"][0]
+        suggestion["protocol_status"] = "experimental_starting_protocol"
+        suggestion["extrapolation"]["used"] = True
+        suggestion["extrapolation"]["source_conditions"] = ["Literature cell"]
+        suggestion["extrapolation"]["target_conditions"] = ["Target cell"]
+        suggestion["extrapolation"]["justification"] = "Experimental assumption."
+        suggestion["extrapolation"]["key_differences"] = ["Cell format"]
+        current = suggestion["protocol_steps"][0]["current"]
+        current.update({"value": 0.75, "basis": "engineering_judgment", "confidence": "high"})
+        result = validate_answer(answer, self.evidence)
+        self.assertEqual(result.status, "reject")
+        self.assertTrue(any("high confidence" in error for error in result.errors))
+
+    def test_experimental_protocol_cannot_contain_unresolved_parameter(self) -> None:
+        answer = base_answer()
+        answer["protocol_suggestions"][0]["protocol_status"] = "experimental_starting_protocol"
         answer["protocol_suggestions"][0]["protocol_steps"][0]["current"] = parameter(
             None, "C", "unresolved"
         )
         result = validate_answer(answer, self.evidence)
         self.assertEqual(result.status, "reject")
-        self.assertTrue(any("cannot be executable_candidate" in error for error in result.errors))
+        self.assertTrue(any("cannot be experimental_starting_protocol" in error for error in result.errors))
 
 
 if __name__ == "__main__":

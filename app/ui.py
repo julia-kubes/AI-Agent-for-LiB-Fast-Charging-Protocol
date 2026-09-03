@@ -119,7 +119,7 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
         if extrapolation.get("used"):
             lines.extend(
                 [
-                    "#### Extrapolation disclosure",
+                    "#### Evidence transfer and reasoning disclosure",
                     "",
                     f"- Justification: {extrapolation.get('justification', '')}",
                     "- Source conditions: "
@@ -303,7 +303,7 @@ def main() -> None:
                     )
         extrapolation = suggestion.get("extrapolation") or {}
         if extrapolation.get("used"):
-            st.markdown("**Extrapolation disclosure**")
+            st.markdown("**Evidence transfer and reasoning disclosure**")
             st.write(extrapolation.get("justification", ""))
             st.caption(
                 "Key source–target differences: "

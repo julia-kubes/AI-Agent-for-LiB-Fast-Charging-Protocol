@@ -68,4 +68,10 @@ Final answers have a 3,000-token ceiling by default. If Parley truncates or
 returns malformed final JSON, the agent requests one concise JSON-only
 regeneration and then fails clearly rather than retrying without a bound.
 
+Protocol values distinguish directly `reported` evidence from
+`evidence_informed_transfer`, explicit `engineering_judgment`, and `unresolved`
+parameters. Transferred and judgment-based values are permitted when their
+evidence context, reasoning, uncertainty, and validation plan are disclosed;
+they must never be represented as directly reported or deployment-validated.
+
 Implementation bugs and fixes are recorded in `DEVELOPMENT_LOG.md`.

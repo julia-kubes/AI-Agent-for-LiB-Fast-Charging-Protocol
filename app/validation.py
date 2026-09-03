@@ -17,8 +17,8 @@ REQUIRED_TRANSITION_FIELDS = REQUIRED_PARAMETER_FIELDS | {"variable", "operator"
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_ORIGIN = {"reported", "synthesized", "extrapolated", "inferred"}
 ALLOWED_DESIGNATION = {"primary", "alternative"}
-ALLOWED_STATUS = {"executable_candidate", "partially_specified"}
-ALLOWED_VALUE_BASIS = {"reported", "anchored_extrapolation", "unresolved"}
+ALLOWED_STATUS = {"experimental_starting_protocol", "literature_transferred_candidate", "partially_specified"}
+ALLOWED_VALUE_BASIS = {"reported", "evidence_informed_transfer", "engineering_judgment", "unresolved"}
 ALLOWED_CONTROL_MODE = {"CC", "CV", "rest", "terminate", "other"}
 ALLOWED_TRANSITION_VARIABLE = {"SOC", "voltage", "current", "time", "anode_potential", "other"}
 ALLOWED_OPERATOR = {">=", "<=", ">", "<", "="}
@@ -63,7 +63,7 @@ def _validate_citations(citations: Any, label: str, allowed_ids: set[str], error
     return [citation for citation in citations if citation in allowed_ids]
 
 
-def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evidence_by_id: dict[str, str], errors: list[str]) -> str | None:
+def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evidence_by_id: dict[str, str], errors: list[str], warnings: list[str]) -> str | None:
     if not isinstance(parameter, dict):
         errors.append(f"{label} must be an object")
         return None
@@ -92,18 +92,23 @@ def _validate_parameter(parameter: Any, label: str, allowed_ids: set[str], evide
         errors.append(f"{label} requires field-level evidence_chunk_ids")
     if basis == "reported" and isinstance(value, (int, float)) and isinstance(unit, str) and not _evidence_contains(value, unit, cited_text):
         errors.append(f"{label} reported value was not found in its cited evidence")
-    if basis == "anchored_extrapolation":
+    if basis == "evidence_informed_transfer":
         source_value = parameter.get("source_value")
         source_unit = parameter.get("source_unit")
         for field in ("source_conditions", "adjustment_rule", "rationale"):
             if not parameter.get(field):
-                errors.append(f"{label} requires {field} for anchored extrapolation")
-        if not isinstance(source_value, (int, float)) or isinstance(source_value, bool):
-            errors.append(f"{label} requires a numeric source_value")
-        if not isinstance(source_unit, str) or not source_unit.strip():
-            errors.append(f"{label} requires source_unit")
-        if isinstance(source_value, (int, float)) and isinstance(source_unit, str) and not _evidence_contains(source_value, source_unit, cited_text):
-            errors.append(f"{label} source value was not found in its cited evidence")
+                errors.append(f"{label} requires {field} for evidence-informed transfer")
+        if source_value is not None and (not isinstance(source_value, (int, float)) or isinstance(source_value, bool)):
+            errors.append(f"{label} source_value must be numeric when supplied")
+        if source_value is not None and (not isinstance(source_unit, str) or not source_unit.strip()):
+            errors.append(f"{label} requires source_unit when source_value is supplied")
+        if isinstance(source_value, (int, float)) and isinstance(source_unit, str) and citations and not _evidence_contains(source_value, source_unit, cited_text):
+            warnings.append(f"{label} source value was not found verbatim in its cited evidence; review the transfer rationale")
+    if basis == "engineering_judgment":
+        if not parameter.get("rationale"):
+            errors.append(f"{label} requires a scientific rationale for engineering judgment")
+        if parameter.get("confidence") == "high":
+            errors.append(f"{label} cannot claim high confidence for engineering judgment")
     return basis
 
 
@@ -160,7 +165,8 @@ def validate_answer(answer: dict[str, Any], evidence: Sequence[EvidenceChunk]) -
             errors.append(f"{label} requires at least one protocol step")
             steps = []
         unresolved_critical = False
-        anchored_fields = 0
+        reasoned_fields = 0
+        judgment_fields = 0
         for step_index, step in enumerate(steps, start=1):
             step_label = f"{label}.protocol_steps[{step_index}]"
             if not isinstance(step, dict):
@@ -181,13 +187,15 @@ def validate_answer(answer: dict[str, Any], evidence: Sequence[EvidenceChunk]) -
             if VAGUE_OPERATIONAL_LANGUAGE.search(operational_text):
                 warnings.append(f"{step_label} contains vague operational language")
             for field in ("current", "voltage_limit", "temperature_limit"):
-                basis = _validate_parameter(step.get(field), f"{step_label}.{field}", allowed_ids, evidence_by_id, errors)
+                basis = _validate_parameter(step.get(field), f"{step_label}.{field}", allowed_ids, evidence_by_id, errors, warnings)
                 unresolved_critical |= basis == "unresolved"
-                anchored_fields += basis == "anchored_extrapolation"
+                reasoned_fields += basis in {"evidence_informed_transfer", "engineering_judgment"}
+                judgment_fields += basis == "engineering_judgment"
             transition = step.get("transition")
-            transition_basis = _validate_parameter(transition, f"{step_label}.transition", allowed_ids, evidence_by_id, errors)
+            transition_basis = _validate_parameter(transition, f"{step_label}.transition", allowed_ids, evidence_by_id, errors, warnings)
             unresolved_critical |= transition_basis == "unresolved"
-            anchored_fields += transition_basis == "anchored_extrapolation"
+            reasoned_fields += transition_basis in {"evidence_informed_transfer", "engineering_judgment"}
+            judgment_fields += transition_basis == "engineering_judgment"
             if isinstance(transition, dict):
                 missing_transition = REQUIRED_TRANSITION_FIELDS - transition.keys()
                 if missing_transition:
@@ -196,10 +204,14 @@ def validate_answer(answer: dict[str, Any], evidence: Sequence[EvidenceChunk]) -
                     errors.append(f"{step_label}.transition has invalid variable")
                 if transition.get("operator") not in ALLOWED_OPERATOR:
                     errors.append(f"{step_label}.transition has invalid operator")
-        if status == "executable_candidate" and unresolved_critical:
-            errors.append(f"{label} cannot be executable_candidate while critical parameters are unresolved")
+        if status in {"experimental_starting_protocol", "literature_transferred_candidate"} and unresolved_critical:
+            errors.append(f"{label} cannot be {status} while critical parameters are unresolved")
         if status == "partially_specified" and not unresolved_critical:
             warnings.append(f"{label} is partially_specified but contains no unresolved critical parameters")
+        if status == "literature_transferred_candidate" and judgment_fields:
+            errors.append(f"{label} must use experimental_starting_protocol when it contains engineering judgment")
+        if reasoned_fields and suggestion.get("reported_or_inferred") == "reported":
+            errors.append(f"{label} cannot label transferred or judgment-based values as reported")
 
         extrapolation = suggestion.get("extrapolation")
         extrapolation_used = isinstance(extrapolation, dict) and extrapolation.get("used") is True
@@ -209,10 +221,10 @@ def validate_answer(answer: dict[str, Any], evidence: Sequence[EvidenceChunk]) -
             for field in ("source_conditions", "target_conditions", "justification", "key_differences"):
                 if not extrapolation.get(field):
                     errors.append(f"{label}.extrapolation requires {field} when used is true")
-        if anchored_fields and not extrapolation_used:
-            errors.append(f"{label} uses anchored extrapolation without disclosure")
-        if extrapolation_used and not anchored_fields:
-            warnings.append(f"{label} discloses extrapolation but has no anchored_extrapolation fields")
+        if reasoned_fields and not extrapolation_used:
+            errors.append(f"{label} uses transferred or judgment-based values without disclosure")
+        if extrapolation_used and not reasoned_fields:
+            warnings.append(f"{label} discloses reasoning transfer but has no transferred or judgment-based fields")
         validation_plan = suggestion.get("validation_plan")
         if not isinstance(validation_plan, list) or not validation_plan:
             errors.append(f"{label} requires a non-empty validation_plan")

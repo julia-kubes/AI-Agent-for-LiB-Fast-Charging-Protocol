@@ -20,21 +20,30 @@ qualified researcher could evaluate experimentally. Return one materially differ
 when the evidence supports it. Do not pad the response with overlapping variants. Protocol stages
 must be structured records, not narrative paragraphs.
 
-Every operational current, voltage, temperature, time, SOC, or transition value must be either:
-(1) reported, with a field-level citation to evidence containing that value;
-(2) anchored_extrapolation, with a cited reported source value, source conditions, target conditions,
-an explicit quantitative or qualitative adjustment rule, and a scientific rationale; or
-(3) unresolved, with a null value. Disclosure alone is not sufficient. Never choose a value merely
-because it seems plausible or would meet the requested charging time.
+Every operational current, voltage, temperature, time, SOC, or transition value must be labeled as:
+(1) reported: the value appears in the cited evidence under sufficiently similar conditions;
+(2) evidence_informed_transfer: the value is adapted from cited literature, with the relevant source
+conditions, source-to-target differences, adjustment logic, and scientific rationale disclosed;
+(3) engineering_judgment: the cited literature supports the mechanism, range, or design direction,
+but the selected value is a transparent experimental assumption rather than a reported result; or
+(4) unresolved, with a null value. Evidence-informed transfer and engineering judgment are legitimate
+parts of protocol design. Do not imply that their proposed values were directly reported, and do not
+choose a value solely because it meets the requested charging time.
 
-An executable_candidate must contain measurable current and transition values for every stage. Do
+An experimental_starting_protocol or literature_transferred_candidate must contain measurable
+current and transition values for every stage. Do
 not use vague operational criteria such as "as needed", "near the limit", "approaches", "low
 threshold", or "manufacturer limit" without also supplying a measurable value. If essential values
 remain unresolved, label the protocol partially_specified and return a structured evidence gap and
 experimental plan rather than filling the gaps with prose.
 
-Never present an extrapolated current, voltage, temperature, state-of-charge, timing, or safety limit
-as directly reported. State missing operating conditions and conflicting evidence. Include monitoring
+Use literature_transferred_candidate when the complete protocol can be constructed through reported
+values and evidence-informed transfer. Use experimental_starting_protocol when any operational value
+depends on engineering judgment. These labels mean "suitable for controlled evaluation," not
+validated for deployment.
+
+Never present a transferred or judgment-based current, voltage, temperature, state-of-charge, timing,
+or safety limit as directly reported. State missing operating conditions and conflicting evidence. Include monitoring
 and stop criteria that defer to manufacturer limits and cell-specific measurements. Do not claim that
 a literature-derived protocol is validated for deployment, and never issue commands to charging
 hardware. If the evidence cannot support even a conservative experimental starting protocol, explain
@@ -51,7 +60,7 @@ FINAL_SCHEMA: dict[str, Any] = {
         {
             "strategy": "string",
             "designation": "primary | alternative",
-            "protocol_status": "executable_candidate | partially_specified",
+            "protocol_status": "experimental_starting_protocol | literature_transferred_candidate | partially_specified",
             "reported_or_inferred": "reported | synthesized | extrapolated | inferred",
             "target_conditions": {
                 "chemistry": "string",
@@ -71,7 +80,7 @@ FINAL_SCHEMA: dict[str, Any] = {
                     "current": {
                         "value": "number | null",
                         "unit": "C | A | mA",
-                        "basis": "reported | anchored_extrapolation | unresolved",
+                        "basis": "reported | evidence_informed_transfer | engineering_judgment | unresolved",
                         "source_value": "number | null",
                         "source_unit": "string | null",
                         "source_conditions": ["string"],
@@ -87,7 +96,7 @@ FINAL_SCHEMA: dict[str, Any] = {
                         "operator": ">= | <= | > | < | =",
                         "value": "number | null",
                         "unit": "string",
-                        "basis": "reported | anchored_extrapolation | unresolved",
+                        "basis": "reported | evidence_informed_transfer | engineering_judgment | unresolved",
                         "source_value": "number | null",
                         "source_unit": "string | null",
                         "source_conditions": ["string"],
@@ -204,7 +213,8 @@ def repair_answer_instruction(evidence: Sequence[EvidenceChunk], reason: str) ->
         "Your previous final answer could not be parsed as complete JSON ("
         + reason
         + "). Regenerate the entire answer once. Return one complete JSON object with no "
-        "Markdown fence or commentary. Use no more than three concise protocol suggestions. "
+        "Markdown fence or commentary. Return exactly one concise primary protocol unless no "
+        "protocol can be supported. "
         "Only cite these chunk IDs: "
         + json.dumps(ids)
         + "\nRequired JSON shape:\n"

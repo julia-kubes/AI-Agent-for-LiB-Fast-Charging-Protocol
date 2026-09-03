@@ -14,7 +14,7 @@ class UIFormattingTests(unittest.TestCase):
                     "strategy": "Test strategy",
                     "rationale": "Test rationale",
                     "designation": "primary",
-                    "protocol_status": "executable_candidate",
+                    "protocol_status": "experimental_starting_protocol",
                     "reported_or_inferred": "synthesized",
                     "confidence": "medium",
                     "target_conditions": {
@@ -66,7 +66,7 @@ class UIFormattingTests(unittest.TestCase):
             "synthesized",
             "25 °C",
             "pouch cell",
-            "executable_candidate",
+            "experimental_starting_protocol",
             "Requires validation",
             "paper::chunk::0001",
             "Conflict",
