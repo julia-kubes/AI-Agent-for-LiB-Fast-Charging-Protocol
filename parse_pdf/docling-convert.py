@@ -4,8 +4,8 @@ Usage (from this folder, in the Conda environment with Docling installed):
     python docling-convert.py
 
 Outputs are written beside the GROBID previews without overwriting them:
-    MD_Files/doi_10.1016_j.jpowsour.2014.10.050.md
-    MD_Files/pdf_a1b2c3d4e5f6a7b8.md  (when no DOI is found)
+    MD_Files/<pdf-filename-without-extension>.md
+    Docling_Files/<pdf-filename-without-extension>.json
     Docling_Files/doi_10.1016_j.jpowsour.2014.10.050.json
 
 Use --force to replace existing Markdown and Docling JSON files.
@@ -132,20 +132,13 @@ def title_and_authors(lines: list[str], fallback_title: str) -> tuple[str, str]:
     return fallback_title, ""
 
 
-def doi_paper_id(doi: str | None, source_hash: str) -> str:
-    """Create a filename-safe, stable ID from a DOI, or from PDF content.
+def pdf_filename_id(pdf_path: Path, source_hash: str) -> str:
+    """Use the PDF filename stem as the collection's canonical record ID.
 
-    The DOI itself remains in metadata unchanged. Replacing its punctuation in
-    the identifier keeps generated filenames portable on Windows.
+    PDFs in this collection are named with the DOI-safe ID used by the
+    metadata CSV and database. Do not infer an identifier from parsed text.
     """
-    if doi:
-        normalized = doi.lower().strip()
-        normalized = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", normalized)
-        safe_doi = re.sub(r"[^a-z0-9._-]+", "_", normalized).strip("._-")
-        if safe_doi:
-            return f"doi_{safe_doi}"
-    return f"pdf_{source_hash[:16]}"
-
+    return pdf_path.stem.strip() or f"pdf_{source_hash[:16]}"
 
 def extract_metadata(
     markdown: str,
@@ -171,18 +164,18 @@ def extract_metadata(
     publication_match = re.search(r"\b((?:19|20)\d{2})\b", publication_date or "")
     year_match = publication_match or re.search(r"\b((?:19|20)\d{2})\b", markdown)
     publication_year = year_match.group(1) if year_match else "unknown"
-    doi_match = re.search(r"\b(10\.\d{4,9}/[-._;()/:A-Z0-9]+)\b", markdown, re.IGNORECASE)
-    doi = doi_match.group(1).rstrip(".,;)") if doi_match else None
+    source_id = pdf_filename_id(pdf_path, source_hash)
 
     return {
-        "paper_id": doi_paper_id(doi, source_hash),
+        "paper_id": source_id,
+        "record_id": source_id,
         "citation_key": f"{primary_last_name}_{publication_year}",
         "title": title,
         "authors_raw": authors_raw or None,
         "primary_author_last_name": primary_last_name if primary_last_name != "unknown" else None,
         "publication_year": int(publication_year) if publication_year != "unknown" else None,
         "publication_date": publication_date,
-        "doi": doi,
+        "doi": None,
         "source_pdf": str(pdf_path.relative_to(ROOT)).replace("\\", "/"),
         "source_size_bytes": pdf_path.stat().st_size,
         "source_sha256": source_hash,
@@ -384,7 +377,6 @@ def main() -> int:
                 args.enrich_formulas,
             )
             output_path = output_path_for(metadata)
-            metadata["record_id"] = output_path.stem
             docling_path = docling_path_for(output_path)
             if output_path.exists() and not args.force:
                 print(f"  Preserved existing {output_path.name}")
