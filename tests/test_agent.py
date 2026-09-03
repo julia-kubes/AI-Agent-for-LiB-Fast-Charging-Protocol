@@ -69,13 +69,25 @@ class ResearchAgentTests(unittest.TestCase):
         self.assertEqual(result.tool_calls, 1)
 
     def test_offline_agent_retrieves_and_returns_valid_answer(self) -> None:
-        result = ResearchAgent(DemoRetrieval(), DemoLLM(), settings()).answer(
+        class TrackingRetrieval(DemoRetrieval):
+            def __init__(self) -> None:
+                self.metadata_requests = []
+
+            def get_paper_metadata(self, record_id):
+                self.metadata_requests.append(record_id)
+                return super().get_paper_metadata(record_id)
+
+        retrieval = TrackingRetrieval()
+        result = ResearchAgent(retrieval, DemoLLM(), settings()).answer(
             "What factors should constrain a fast-charging protocol?"
         )
         self.assertEqual(result.validation.status, "pass")
         self.assertEqual(result.agent_rounds, 2)
         self.assertEqual(result.tool_calls, 1)
         self.assertEqual(len(result.evidence), 2)
+        self.assertEqual(result.evidence[0].metadata["doi"], "10.0000/demo")
+        self.assertNotIn("doi", result.evidence[1].metadata)
+        self.assertEqual(retrieval.metadata_requests, ["demo-paper"])
         self.assertGreater(result.usage.total_tokens, 0)
 
     def test_empty_question_is_rejected(self) -> None:
