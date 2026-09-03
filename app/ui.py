@@ -10,13 +10,17 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from app.agent import ResearchAgent
+from app.citations import answer_dois, chunk_doi
 from app.config import Settings
 from app.demo import DemoLLM, DemoRetrieval
 from app.llm_client import OpenAICompatibleLLM
+from app.pdf_export import build_response_pdf
 from app.retrieval_adapter import NeonRetrievalAdapter
 
 
-def format_response_for_clipboard(answer: dict[str, Any]) -> str:
+def format_response_for_clipboard(
+    answer: dict[str, Any], evidence=()
+) -> str:
     """Format every generated-answer field as readable Markdown text."""
 
     lines = ["# Fast-Charging Literature Assistant Response", ""]
@@ -40,8 +44,7 @@ def format_response_for_clipboard(answer: dict[str, Any]) -> str:
                 + "; ".join(suggestion.get("applicable_conditions") or ["Not provided"]),
                 "- Limitations: "
                 + "; ".join(suggestion.get("limitations") or ["Not provided"]),
-                "- Evidence chunks: "
-                + ", ".join(suggestion.get("evidence_chunk_ids") or ["None"]),
+                "- DOI: " + ", ".join(answer_dois(suggestion, evidence)),
                 "",
             ]
         )
@@ -132,7 +135,7 @@ def main() -> None:
     with st.expander("Optional Specifications"):
         chemistry = st.text_input("Cell chemistry")
         form_factor = st.text_input("Form factor")
-        temperature = st.text_input("Temperature")
+        temperature = st.text_input("Temperature (°C)")
         soc_range = st.text_input("Starting and target SOC")
         objective = st.text_input("Optimization objective")
 
@@ -164,7 +167,14 @@ def main() -> None:
 
     if demo:
         st.warning("Demo mode is active; all evidence and answers are synthetic.")
-    show_copy_button(format_response_for_clipboard(result.answer))
+    show_copy_button(format_response_for_clipboard(result.answer, result.evidence))
+    st.download_button(
+        "Save response as PDF",
+        data=build_response_pdf(result.answer, result.evidence),
+        file_name="fast-charging-response.pdf",
+        mime="application/pdf",
+        on_click="ignore",
+    )
     st.subheader("Summary")
     st.write(result.answer.get("summary", ""))
     st.subheader("Protocol suggestions")
@@ -173,7 +183,7 @@ def main() -> None:
         st.write(suggestion.get("rationale", ""))
         st.caption(
             f"Confidence: {suggestion.get('confidence', 'unknown')} · "
-            f"Evidence: {', '.join(suggestion.get('evidence_chunk_ids', []))}"
+            f"DOI: {', '.join(answer_dois(suggestion, result.evidence))}"
         )
 
     for heading, field in (
@@ -190,7 +200,7 @@ def main() -> None:
 
     with st.expander("Evidence and execution details"):
         for chunk in result.evidence:
-            st.markdown(f"**{chunk.chunk_id} — {chunk.title or chunk.record_id}**")
+            st.markdown(f"**DOI: {chunk_doi(chunk) or 'unavailable'}**")
             st.caption(f"Section: {chunk.section or 'unknown'} · Pages: {chunk.page_numbers}")
             st.write(chunk.text)
         st.json(

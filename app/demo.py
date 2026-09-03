@@ -50,7 +50,12 @@ class DemoRetrieval:
         return [chunk for chunk in DEMO_CHUNKS if chunk.chunk_id != chunk_id]
 
     def get_paper_metadata(self, record_id: str) -> dict[str, Any]:
-        return {"record_id": record_id, "title": "Demonstration paper", "synthetic": True}
+        return {
+            "record_id": record_id,
+            "title": "Demonstration paper",
+            "doi": "10.0000/demo",
+            "synthetic": True,
+        }
 
 
 class DemoLLM:

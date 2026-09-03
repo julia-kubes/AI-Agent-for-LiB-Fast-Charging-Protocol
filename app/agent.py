@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from .config import Settings
@@ -106,6 +107,7 @@ class ResearchAgent:
                         raise RuntimeError(
                             "LLM final answer remained invalid after one repair attempt"
                         ) from repair_error
+                evidence = self._enrich_final_evidence(answer, evidence)
                 validation = validate_answer(answer, evidence)
                 return AgentResult(
                     answer,
@@ -161,3 +163,31 @@ class ResearchAgent:
                 )
 
         raise RuntimeError("Agent reached its maximum rounds without a final answer")
+
+    def _enrich_final_evidence(self, answer, evidence):
+        """Fetch paper metadata for chunks cited by the final answer."""
+        cited_ids = {
+            chunk_id
+            for suggestion in answer.get("protocol_suggestions") or []
+            if isinstance(suggestion, dict)
+            for chunk_id in suggestion.get("evidence_chunk_ids") or []
+            if isinstance(chunk_id, str)
+        }
+        cited_record_ids = {
+            chunk.record_id for chunk in evidence if chunk.chunk_id in cited_ids
+        }
+        paper_metadata = {}
+        for record_id in cited_record_ids:
+            try:
+                paper_metadata[record_id] = self.retrieval.get_paper_metadata(record_id)
+            except Exception:
+                paper_metadata[record_id] = {}
+        return tuple(
+            replace(
+                chunk,
+                metadata={**chunk.metadata, **paper_metadata.get(chunk.record_id, {})},
+            )
+            if chunk.chunk_id in cited_ids
+            else chunk
+            for chunk in evidence
+        )
