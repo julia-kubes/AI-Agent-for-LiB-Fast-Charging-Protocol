@@ -12,11 +12,11 @@ Knowledge Database/
 ├── create-chunks.py
 ├── corrections.json
 ├── Docling_Files/
-│   └── smith_2024.json
+│   └── 10.1016j.apenergy.2024.124538.json
 ├── MD_Files/
-│   └── smith_2024.md
+│   └── 10.1016j.apenergy.2024.124538.md
 └── chunk_files/
-    └── smith_2024/
+    └── 10.1016j.apenergy.2024.124538/
         ├── chunks.jsonl
         ├── quarantine.jsonl
         ├── quality_report.json
@@ -25,8 +25,12 @@ Knowledge Database/
 
 One JSONL file per paper is preferable to one file per chunk: it avoids creating
 thousands of tiny files while retaining independent, replaceable paper outputs.
+Local filenames and directories use the filesystem-safe `paper_id`. The script
+reads the canonical DOI-based `record_id` from the matching Markdown front matter.
 Chunk IDs use `<record_id>::chunk::<zero-padded index>`, for example
-`smith_2024::chunk::0001`. Each record also includes a SHA-256 content hash.
+`10.1016/j.apenergy.2024.124538::chunk::0001`. Each record also includes a SHA-256
+content hash. Processing stops for a paper if its Markdown front matter does not
+contain `record_id`; the filename stem is never silently substituted.
 
 ## Setup
 
@@ -74,10 +78,11 @@ Options can be changed explicitly:
 python create-chunks.py --max-tokens 350 --overlap-percent 10
 ```
 
-To regenerate only selected papers, repeat `--record`:
+To regenerate only selected papers, repeat `--record` with the filesystem-safe
+`paper_id`/filename stem:
 
 ```powershell
-python create-chunks.py --record smith_2024 --record jones_2025
+python create-chunks.py --record 10.1016j.apenergy.2024.124538
 ```
 
 When running the repository copy from another directory, specify the collection:
@@ -91,6 +96,8 @@ python create-chunks.py --root "C:\path\to\Knowledge Database"
 Each line in `chunks.jsonl` is one JSON object containing:
 
 - `chunk_id`, `record_id`, and `chunk_index` for addressing and filtering.
+- `paper_id` in the per-paper manifest and quality report for the local source
+  filename/directory association.
 - `text`: the final context-enriched, overlapped text intended for embedding.
 - `content_text`: Docling's original chunk body.
 - `contextualized_text`: the body enriched by Docling with headings/captions.
