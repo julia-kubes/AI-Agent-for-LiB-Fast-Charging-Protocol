@@ -14,6 +14,7 @@ Use --force to replace existing Markdown and Docling JSON files.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import importlib.metadata
 import json
@@ -30,10 +31,11 @@ from docling.document_converter import DocumentConverter
 from docling.document_converter import PdfFormatOption
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path.cwd().resolve()
 OUTPUT_DIR = ROOT / "MD_Files"
 DOCLING_DIR = ROOT / "Docling_Files"
 IMAGE_DIR = ROOT / "Image_Files"
+DEFAULT_METADATA_CSV = Path("battery_paper_metadata.csv")
 EXCLUDED_DIR_NAMES = {"MD_Files", "Docling_Files", "XML_Files"}
 
 
@@ -133,12 +135,47 @@ def title_and_authors(lines: list[str], fallback_title: str) -> tuple[str, str]:
 
 
 def pdf_filename_id(pdf_path: Path, source_hash: str) -> str:
-    """Use the PDF filename stem as the collection's canonical record ID.
+    """Return the filesystem-safe ID used for generated filenames.
 
-    PDFs in this collection are named with the DOI-safe ID used by the
-    metadata CSV and database. Do not infer an identifier from parsed text.
+    This is deliberately separate from the canonical DOI-based record ID.
     """
     return pdf_path.stem.strip() or f"pdf_{source_hash[:16]}"
+
+
+def identifier_key(value: str) -> str:
+    """Normalize DOI punctuation for matching it to a filesystem-safe stem."""
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def load_csv_metadata(path: Path) -> dict[str, dict[str, str]]:
+    """Map a filesystem-safe DOI key to its authoritative CSV metadata row."""
+    if not path.is_file():
+        raise SystemExit(f"Metadata CSV not found: {path}")
+
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        required = {"doi", "paper_title"}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise SystemExit(
+                "Metadata CSV is missing required columns: "
+                + ", ".join(sorted(missing))
+            )
+        rows = list(reader)
+
+    by_key: dict[str, dict[str, str]] = {}
+    for line_number, row in enumerate(rows, start=2):
+        doi = "".join((row.get("doi") or "").strip().split())
+        if not doi or doi.lower() == "n/s":
+            continue
+        key = identifier_key(doi)
+        if key in by_key:
+            raise SystemExit(
+                f"Metadata CSV lines map to the same filename key: {key!r}"
+            )
+        by_key[key] = {**row, "doi": doi, "_line": str(line_number)}
+    return by_key
+
 
 def extract_metadata(
     markdown: str,
@@ -146,6 +183,7 @@ def extract_metadata(
     source_hash: str,
     page_count: int | None,
     formula_enrichment: bool,
+    csv_row: dict[str, str],
 ) -> dict[str, object]:
     """Extract common scholarly metadata from Docling's Markdown, best-effort."""
     lines = nonempty_lines(markdown)
@@ -165,17 +203,18 @@ def extract_metadata(
     year_match = publication_match or re.search(r"\b((?:19|20)\d{2})\b", markdown)
     publication_year = year_match.group(1) if year_match else "unknown"
     source_id = pdf_filename_id(pdf_path, source_hash)
+    record_id = csv_row["doi"]
 
     return {
         "paper_id": source_id,
-        "record_id": source_id,
+        "record_id": record_id,
         "citation_key": f"{primary_last_name}_{publication_year}",
         "title": title,
         "authors_raw": authors_raw or None,
         "primary_author_last_name": primary_last_name if primary_last_name != "unknown" else None,
         "publication_year": int(publication_year) if publication_year != "unknown" else None,
         "publication_date": publication_date,
-        "doi": None,
+        "doi": record_id,
         "source_pdf": str(pdf_path.relative_to(ROOT)).replace("\\", "/"),
         "source_size_bytes": pdf_path.stat().st_size,
         "source_sha256": source_hash,
@@ -264,7 +303,7 @@ def provenance_for(element: object) -> list[dict[str, object]]:
 
 def export_images(document: object, metadata: dict[str, object], image_scale: float) -> None:
     """Save figure/table crops and a manifest that grounds them in the PDF."""
-    paper_image_dir = IMAGE_DIR / str(metadata["record_id"])
+    paper_image_dir = IMAGE_DIR / str(metadata["paper_id"])
     paper_image_dir.mkdir(parents=True, exist_ok=True)
     exported: list[dict[str, object]] = []
     counters = {"figure": 0, "table": 0}
@@ -321,8 +360,25 @@ def export_images(document: object, metadata: dict[str, object], image_scale: fl
 
 
 def main() -> int:
+    global ROOT, OUTPUT_DIR, DOCLING_DIR, IMAGE_DIR
+
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="collection root containing PDFs and metadata CSV (default: current folder)",
+    )
     parser.add_argument("--force", action="store_true", help="replace existing Docling Markdown files")
+    parser.add_argument(
+        "--metadata-csv",
+        type=Path,
+        default=DEFAULT_METADATA_CSV,
+        help=(
+            "CSV containing authoritative doi and paper_title values "
+            "(default: <root>/battery_paper_metadata.csv)"
+        ),
+    )
     parser.add_argument(
         "--export-images",
         action="store_true",
@@ -340,6 +396,16 @@ def main() -> int:
         help="render scale for exported images; 1 is about 72 DPI (default: 2)",
     )
     args = parser.parse_args()
+
+    ROOT = args.root.resolve()
+    OUTPUT_DIR = ROOT / "MD_Files"
+    DOCLING_DIR = ROOT / "Docling_Files"
+    IMAGE_DIR = ROOT / "Image_Files"
+    metadata_csv = args.metadata_csv
+    if not metadata_csv.is_absolute():
+        metadata_csv = ROOT / metadata_csv
+    metadata_csv = metadata_csv.resolve()
+    csv_metadata = load_csv_metadata(metadata_csv)
 
     pdfs = find_pdfs()
     if not pdfs:
@@ -367,6 +433,13 @@ def main() -> int:
     for number, pdf_path, source_hash, previous_output in pending:
         print(f"[{number}/{len(pdfs)}] Converting {pdf_path.name}")
         try:
+            source_key = identifier_key(pdf_path.stem)
+            csv_row = csv_metadata.get(source_key)
+            if csv_row is None:
+                raise ValueError(
+                    f"PDF filename does not match any DOI in {metadata_csv}: "
+                    f"{pdf_path.name}"
+                )
             document = converter.convert(str(pdf_path)).document
             markdown = document.export_to_markdown()
             metadata = extract_metadata(
@@ -375,6 +448,7 @@ def main() -> int:
                 source_hash,
                 len(getattr(document, "pages", {})),
                 args.enrich_formulas,
+                csv_row,
             )
             output_path = output_path_for(metadata)
             docling_path = docling_path_for(output_path)
