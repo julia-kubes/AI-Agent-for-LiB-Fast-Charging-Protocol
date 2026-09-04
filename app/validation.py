@@ -15,7 +15,6 @@ REQUIRED_TOP_LEVEL = {
     "conflicting_evidence",
     "missing_information",
     "safety_notes",
-    "follow_up_questions",
 }
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_ORIGIN = {"reported", "synthesized", "inferred"}

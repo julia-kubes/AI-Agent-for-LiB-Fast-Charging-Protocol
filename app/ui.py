@@ -15,6 +15,7 @@ from app.config import Settings
 from app.demo import DemoLLM, DemoRetrieval
 from app.llm_client import OpenAICompatibleLLM
 from app.pdf_export import build_response_pdf
+from app.presentation import text_items
 from app.retrieval_adapter import NeonRetrievalAdapter
 
 
@@ -41,9 +42,9 @@ def format_response_for_clipboard(
                 f"- Origin: {suggestion.get('reported_or_inferred', 'unknown')}",
                 f"- Confidence: {suggestion.get('confidence', 'unknown')}",
                 "- Applicable conditions: "
-                + "; ".join(suggestion.get("applicable_conditions") or ["Not provided"]),
+                + "; ".join(text_items(suggestion.get("applicable_conditions"), ["Not provided"])),
                 "- Limitations: "
-                + "; ".join(suggestion.get("limitations") or ["Not provided"]),
+                + "; ".join(text_items(suggestion.get("limitations"), ["Not provided"])),
                 "- DOI: " + ", ".join(answer_dois(suggestion, evidence)),
                 "",
             ]
@@ -53,10 +54,9 @@ def format_response_for_clipboard(
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
         lines.extend([f"## {heading}", ""])
-        values = answer.get(field) or []
+        values = text_items(answer.get(field))
         lines.extend([f"- {value}" for value in values] or ["None provided."])
         lines.append("")
 
@@ -185,14 +185,19 @@ def main() -> None:
             f"Confidence: {suggestion.get('confidence', 'unknown')} · "
             f"DOI: {', '.join(answer_dois(suggestion, result.evidence))}"
         )
+        st.caption(
+            f"Origin: {suggestion.get('reported_or_inferred', 'unknown')} · "
+            "Applicable conditions: "
+            + "; ".join(text_items(suggestion.get("applicable_conditions"), ["Not provided"]))
+        )
+        st.caption("Limitations: " + "; ".join(text_items(suggestion.get("limitations"), ["Not provided"])))
 
     for heading, field in (
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
-        values = result.answer.get(field) or []
+        values = text_items(result.answer.get(field))
         if values:
             st.subheader(heading)
             for value in values:

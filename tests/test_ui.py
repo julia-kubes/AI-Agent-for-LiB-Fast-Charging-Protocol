@@ -34,7 +34,6 @@ class UIFormattingTests(unittest.TestCase):
             "Conflict",
             "Capacity",
             "Validate experimentally",
-            "What is the form factor?",
         ):
             self.assertIn(expected, rendered)
 
@@ -56,7 +55,7 @@ class UIFormattingTests(unittest.TestCase):
             "conflicting_evidence": ["Conflict"],
             "missing_information": ["Capacity"],
             "safety_notes": ["Validate experimentally"],
-            "follow_up_questions": ["What is the form factor?"],
+            "follow_up_questions": ["Legacy field must not be rendered"],
         }
 
     @staticmethod
@@ -78,13 +77,26 @@ class UIFormattingTests(unittest.TestCase):
                 "conflicting_evidence": [],
                 "missing_information": [],
                 "safety_notes": [],
-                "follow_up_questions": ["Ask a battery question"],
+                "follow_up_questions": ["Legacy field must not be rendered"],
             }
         )
 
         self.assertIn("Outside scope", rendered)
         self.assertIn("No protocol suggestions provided.", rendered)
-        self.assertIn("Ask a battery question", rendered)
+        self.assertNotIn("Follow-up questions", rendered)
+        self.assertNotIn("Legacy field must not be rendered", rendered)
+
+    def test_single_string_fields_are_not_split_into_characters(self) -> None:
+        answer = self._complete_answer()
+        answer["protocol_suggestions"][0]["applicable_conditions"] = "25 °C pouch cell"
+        answer["protocol_suggestions"][0]["limitations"] = "Requires validation"
+
+        rendered = format_response_for_clipboard(answer, self._evidence())
+        pdf = build_response_pdf(answer, self._evidence())
+
+        self.assertIn("- Limitations: Requires validation", rendered)
+        self.assertNotIn("R; e; q", rendered)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
 
 
 if __name__ == "__main__":

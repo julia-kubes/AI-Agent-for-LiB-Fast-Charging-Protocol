@@ -23,6 +23,7 @@ from reportlab.platypus import (
 )
 
 from .citations import answer_dois
+from .presentation import text_items
 from .schemas import EvidenceChunk
 
 
@@ -156,8 +157,8 @@ def build_response_pdf(
         details = (
             ("Origin", suggestion.get("reported_or_inferred") or "unknown"),
             ("Confidence", suggestion.get("confidence") or "unknown"),
-            ("Applicable conditions", "; ".join(suggestion.get("applicable_conditions") or ["Not provided"])),
-            ("Limitations", "; ".join(suggestion.get("limitations") or ["Not provided"])),
+            ("Applicable conditions", "; ".join(text_items(suggestion.get("applicable_conditions"), ["Not provided"]))),
+            ("Limitations", "; ".join(text_items(suggestion.get("limitations"), ["Not provided"]))),
             ("DOI", ", ".join(answer_dois(suggestion, evidence))),
         )
         for label, value in details:
@@ -173,10 +174,9 @@ def build_response_pdf(
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
         story.append(Paragraph(heading, heading_style))
-        values = answer.get(field) or []
+        values = text_items(answer.get(field))
         if not values:
             story.append(Paragraph("None provided.", body_style))
         for value in values:

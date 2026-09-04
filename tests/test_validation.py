@@ -23,7 +23,6 @@ def base_answer() -> dict:
         "conflicting_evidence": [],
         "missing_information": [],
         "safety_notes": [],
-        "follow_up_questions": [],
     }
 
 
