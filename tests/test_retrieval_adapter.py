@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import MagicMock
 
 from app.retrieval_adapter import (
     NeonRetrievalAdapter,
@@ -91,6 +92,39 @@ class RetrievalAdapterTests(unittest.TestCase):
         self.assertEqual(evidence.similarity, 2.4)
         self.assertEqual(evidence.metadata["vector_rank"], 7)
         self.assertEqual(evidence.metadata["doi"], "10.1234/example")
+
+    def test_fetch_neighbors_includes_joined_paper_metadata(self) -> None:
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [
+            (
+                "10.1234/example::chunk::0002",
+                "10.1234/example",
+                "Neighbor evidence",
+                [3, 4],
+                "CSV paper title",
+                ["Results", "Cycling"],
+                2,
+                "10.1234/example",
+                "LFP",
+                "A123 Systems",
+                "cylindrical",
+                "Experimental",
+            )
+        ]
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        adapter = object.__new__(NeonRetrievalAdapter)
+        adapter._connect = MagicMock(return_value=connection)
+
+        evidence = adapter.fetch_neighbors("10.1234/example::chunk::0001")
+
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(evidence[0].title, "CSV paper title")
+        self.assertEqual(evidence[0].section, "Results > Cycling")
+        self.assertEqual(evidence[0].metadata["doi"], "10.1234/example")
+        self.assertEqual(evidence[0].metadata["paper_type"], "Experimental")
+        connection.close.assert_called_once_with()
 
 
 if __name__ == "__main__":
