@@ -198,11 +198,18 @@ class NeonRetrievalAdapter:
                         WHERE chunk_id = %s
                     )
                     SELECT c.chunk_id, c.record_id, c.text, c.page_numbers,
-                           c.metadata->>'title',
+                           COALESCE(p.paper_title, c.metadata->>'title'),
                            jsonb_extract_path(c.metadata, 'docling', 'headings'),
-                           c.chunk_index
+                           c.chunk_index,
+                           p.doi,
+                           p.battery_chemistry_cathode,
+                           p.manufacturer,
+                           p.form_factor,
+                           p.paper_type
                     FROM public.rag_chunks AS c
                     JOIN target AS t ON t.record_id = c.record_id
+                    LEFT JOIN public.paper_metadata AS p
+                        ON p.record_id = c.record_id
                     WHERE c.chunk_index BETWEEN t.chunk_index - %s AND t.chunk_index + %s
                     ORDER BY c.chunk_index
                     """,
@@ -216,7 +223,15 @@ class NeonRetrievalAdapter:
                 chunk_id=row[0], record_id=row[1], text=row[2],
                 page_numbers=tuple(row[3] or ()), title=row[4],
                 section=" > ".join(row[5] or ()) or None,
-                metadata={"chunk_index": row[6], "neighbor_of": chunk_id},
+                metadata={
+                    "chunk_index": row[6],
+                    "neighbor_of": chunk_id,
+                    "doi": row[7],
+                    "battery_chemistry_cathode": row[8],
+                    "manufacturer": row[9],
+                    "form_factor": row[10],
+                    "paper_type": row[11],
+                },
             )
             for row in rows
         ]
