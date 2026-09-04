@@ -167,6 +167,5 @@ class DemoLLM:
             "conflicting_evidence": [],
             "missing_information": ["Real retrieval results"],
             "safety_notes": ["Do not use demo output to control charging hardware."],
-            "follow_up_questions": [],
         }
         return ModelReply(json.dumps(answer), usage=Usage(650, 180))

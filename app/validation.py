@@ -8,7 +8,13 @@ from typing import Any, Sequence
 
 from .schemas import EvidenceChunk, ValidationResult
 
-REQUIRED_TOP_LEVEL = {"summary", "protocol_suggestions", "conflicting_evidence", "missing_information", "safety_notes", "follow_up_questions"}
+REQUIRED_TOP_LEVEL = {
+    "summary",
+    "protocol_suggestions",
+    "conflicting_evidence",
+    "missing_information",
+    "safety_notes",
+}
 REQUIRED_SUGGESTION_FIELDS = {"strategy", "designation", "protocol_status", "reported_or_inferred", "target_conditions", "protocol_steps", "rationale", "evidence_chunk_ids", "extrapolation", "validation_plan", "limitations", "confidence"}
 REQUIRED_TARGET_FIELDS = {"chemistry", "form_factor", "capacity_ah", "temperature_c", "start_soc_percent", "end_soc_percent", "target_time_minutes"}
 REQUIRED_STEP_FIELDS = {"stage_number", "stage_name", "control_mode", "start_condition", "current", "voltage_limit", "temperature_limit", "transition", "monitoring", "stop_conditions"}

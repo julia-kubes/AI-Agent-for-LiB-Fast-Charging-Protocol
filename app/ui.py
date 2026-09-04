@@ -130,7 +130,6 @@ def format_response_for_clipboard(
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
         lines.extend([f"## {heading}", ""])
         values = text_items(answer.get(field))
@@ -308,7 +307,6 @@ def main() -> None:
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
         values = text_items(result.answer.get(field))
         if values:

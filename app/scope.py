@@ -57,7 +57,4 @@ def out_of_domain_answer() -> dict[str, object]:
         "conflicting_evidence": [],
         "missing_information": [],
         "safety_notes": [],
-        "follow_up_questions": [
-            "What would you like to investigate about lithium-ion fast charging?"
-        ],
     }

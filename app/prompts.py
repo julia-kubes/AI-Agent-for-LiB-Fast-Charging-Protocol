@@ -128,7 +128,6 @@ FINAL_SCHEMA: dict[str, Any] = {
     "conflicting_evidence": ["string"],
     "missing_information": ["string"],
     "safety_notes": ["string"],
-    "follow_up_questions": ["string"],
 }
 
 

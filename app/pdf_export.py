@@ -259,7 +259,6 @@ def build_response_pdf(
         ("Conflicting evidence", "conflicting_evidence"),
         ("Missing information", "missing_information"),
         ("Safety notes", "safety_notes"),
-        ("Follow-up questions", "follow_up_questions"),
     ):
         story.append(Paragraph(heading, heading_style))
         values = text_items(answer.get(field))

@@ -34,7 +34,6 @@ class UIFormattingTests(unittest.TestCase):
             "Conflict",
             "Capacity",
             "Validate experimentally",
-            "What is the form factor?",
             "experimental_starting_protocol",
             "Initial charge",
             "1 C",
@@ -95,7 +94,7 @@ class UIFormattingTests(unittest.TestCase):
             "conflicting_evidence": ["Conflict"],
             "missing_information": ["Capacity"],
             "safety_notes": ["Validate experimentally"],
-            "follow_up_questions": ["What is the form factor?"],
+            "follow_up_questions": ["Legacy field must not be rendered"],
         }
 
     @staticmethod
@@ -117,14 +116,15 @@ class UIFormattingTests(unittest.TestCase):
                 "conflicting_evidence": [],
                 "missing_information": [],
                 "safety_notes": [],
-                "follow_up_questions": ["Ask a battery question"],
+                "follow_up_questions": ["Legacy field must not be rendered"],
             },
             self._evidence(),
         )
 
         self.assertIn("Outside scope", rendered)
         self.assertIn("No protocol suggestions provided.", rendered)
-        self.assertIn("Ask a battery question", rendered)
+        self.assertNotIn("Follow-up questions", rendered)
+        self.assertNotIn("Legacy field must not be rendered", rendered)
 
     def test_single_string_limitation_is_not_split_into_characters(self) -> None:
         rendered = format_response_for_clipboard(
@@ -144,7 +144,6 @@ class UIFormattingTests(unittest.TestCase):
                 "conflicting_evidence": [],
                 "missing_information": [],
                 "safety_notes": [],
-                "follow_up_questions": [],
             },
             self._evidence(),
         )
