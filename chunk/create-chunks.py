@@ -1,11 +1,14 @@
 """Create RAG-ready JSONL chunks from serialized Docling documents.
 
-Expected collection layout (the script defaults to the directory containing it):
+Expected collection layout (the script defaults to the current working directory):
 
-    Docling_Files/<record_id>.json
-    MD_Files/<record_id>.md
-    chunk_files/<record_id>/chunks.jsonl
-    chunk_files/<record_id>/manifest.json
+    Docling_Files/<paper_id>.json
+    MD_Files/<paper_id>.md
+    chunk_files/<paper_id>/chunks.jsonl
+    chunk_files/<paper_id>/manifest.json
+
+``paper_id`` is the filesystem-safe source name. Chunk IDs and database record
+IDs use the canonical DOI stored as ``record_id`` in the Markdown front matter.
 
 HybridChunker does not provide overlapping chunks directly. This script reserves
 part of the final token budget for the tail of the preceding chunk, so the
@@ -284,17 +287,22 @@ def chunk_document(
     model_id: str,
     corrections: dict[str, list[dict[str, Any]]],
 ) -> int:
-    record_id = docling_path.stem
-    markdown_path = markdown_dir / f"{record_id}.md"
+    source_id = docling_path.stem
+    markdown_path = markdown_dir / f"{source_id}.md"
     document_metadata = markdown_front_matter(markdown_path)
-    document_metadata.setdefault("record_id", record_id)
+    record_id = str(document_metadata.get("record_id") or "").strip()
+    if not record_id:
+        raise ValueError(
+            f"Markdown front matter has no canonical record_id: {markdown_path}"
+        )
+    document_metadata["record_id"] = record_id
 
     document = DoclingDocument.load_from_json(docling_path)
     chunks = list(chunker.chunk(document))
     records: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     repair_events: list[dict[str, Any]] = []
-    correction_entries = corrections.get(record_id, [])
+    correction_entries = corrections.get(source_id, corrections.get(record_id, []))
     correction_application_counts = [0] * len(correction_entries)
     document_metadata = apply_verified_corrections_to_value(
         document_metadata, correction_entries, correction_application_counts
@@ -375,7 +383,7 @@ def chunk_document(
         records.append(record)
         previous_text = content_text
 
-    paper_dir = output_dir / record_id
+    paper_dir = output_dir / source_id
     paper_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(paper_dir / "chunks.jsonl", records)
     write_jsonl(paper_dir / "quarantine.jsonl", quarantined)
@@ -383,6 +391,7 @@ def chunk_document(
         paper_dir / "quality_report.json",
         {
             "schema_version": 1,
+            "paper_id": source_id,
             "record_id": record_id,
             "source_chunk_count": len(chunks),
             "written_chunk_count": len(records),
@@ -409,6 +418,7 @@ def chunk_document(
         paper_dir / "manifest.json",
         {
             "schema_version": 1,
+            "paper_id": source_id,
             "record_id": record_id,
             "source_docling_json": str(docling_path),
             "source_docling_sha256": sha256_file(docling_path),
@@ -456,8 +466,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path(__file__).resolve().parent,
-        help="collection root containing Docling_Files and MD_Files (default: script folder)",
+        default=Path.cwd(),
+        help="collection root containing Docling_Files and MD_Files (default: current folder)",
     )
     parser.add_argument("--model", default=EMBEDDING_MODEL, help="Hugging Face tokenizer/model ID")
     parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
