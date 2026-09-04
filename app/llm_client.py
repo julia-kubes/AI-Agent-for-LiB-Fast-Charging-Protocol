@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Sequence
 
 import httpx
 
 from .config import Settings
 from .schemas import ModelReply, ToolCall, Usage
+
+
+RETRYABLE_HTTP_STATUSES = {502, 503, 504}
+MAX_REQUEST_ATTEMPTS = 3
 
 
 class OpenAICompatibleLLM:
@@ -31,24 +36,29 @@ class OpenAICompatibleLLM:
             payload["tools"] = list(tools)
             payload["tool_choice"] = "auto"
 
-        try:
-            response = httpx.post(
-                f"{self.settings.llm_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.settings.llm_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self.settings.request_timeout_seconds,
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as error:
-            status = error.response.status_code
-            if status == 429:
-                raise RuntimeError("LLM quota or rate limit reached (HTTP 429)") from error
-            raise RuntimeError(f"LLM request failed with HTTP {status}") from error
-        except httpx.HTTPError as error:
-            raise RuntimeError(f"LLM request failed: {type(error).__name__}") from error
+        for attempt in range(MAX_REQUEST_ATTEMPTS):
+            try:
+                response = httpx.post(
+                    f"{self.settings.llm_base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.settings.llm_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=self.settings.request_timeout_seconds,
+                )
+                response.raise_for_status()
+                break
+            except httpx.HTTPStatusError as error:
+                status = error.response.status_code
+                if status in RETRYABLE_HTTP_STATUSES and attempt < MAX_REQUEST_ATTEMPTS - 1:
+                    time.sleep(2**attempt)
+                    continue
+                if status == 429:
+                    raise RuntimeError("LLM quota or rate limit reached (HTTP 429)") from error
+                raise RuntimeError(f"LLM request failed with HTTP {status}") from error
+            except httpx.HTTPError as error:
+                raise RuntimeError(f"LLM request failed: {type(error).__name__}") from error
 
         data = response.json()
         try:
