@@ -1,1 +1,0 @@
-{"id":"unrelated_casual_query","label":"Out-of-domain casual query","category":"out_of_domain","question":"What's up?","conditions":{},"what_it_tests":"Whether the system recognizes an unrelated casual query, avoids unnecessary literature retrieval and protocol generation, and redirects the user toward its fast-charging scope."}
