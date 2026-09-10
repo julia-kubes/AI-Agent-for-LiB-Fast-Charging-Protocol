@@ -1,4 +1,4 @@
--r embedding/requirements.txt
+-r data_pipeline/embedding/requirements.txt
 httpx>=0.28.0
 python-dotenv>=1.0.1
 reportlab>=4.2.0

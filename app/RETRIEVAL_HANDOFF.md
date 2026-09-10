@@ -1,6 +1,7 @@
 # Retrieval integration contract (implemented)
 
-The application layer deliberately does not import `embedding/embed-and-store.py`.
+The application layer deliberately does not import
+`data_pipeline/embedding/embed-and-store.py`.
 The revised implementation is connected through `app/retrieval_adapter.py`
 without coupling the agent, UI, or provider client to retrieval internals.
 
