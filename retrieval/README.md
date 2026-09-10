@@ -1,7 +1,7 @@
 # Retrieve and rerank battery-literature chunks
 
 `retrieval.py` runs a two-stage retrieval pipeline over the PostgreSQL/pgvector
-database created by `embedding/embed-and-store.py`:
+database created by `data_pipeline/embedding/embed-and-store.py`:
 
 1. Embed a plain-language query with `Alibaba-NLP/gte-modernbert-base`.
 2. Exclude reference sections and, by default, introduction sections.
@@ -22,11 +22,12 @@ The script is read-only. It does not update database rows or stored embeddings.
   models
 
 The dependencies are shared with the embedding pipeline. From the repository
-root, create or activate the environment described in `embedding/README.md`,
+root, create or activate the environment described in
+`data_pipeline/embedding/README.md`,
 then install:
 
 ```powershell
-python -m pip install -r .\embedding\requirements.txt
+python -m pip install -r .\data_pipeline\embedding\requirements.txt
 ```
 
 The first run downloads both GTE models from Hugging Face. Subsequent runs use
@@ -158,11 +159,11 @@ python .\retrieval.py "your query" --device cpu --batch-size 4
 
 ## Vector-only baseline
 
-`embedding/embed-and-store.py --query` provides an independent vector-only
-baseline:
+`data_pipeline/embedding/embed-and-store.py --query` provides an independent
+vector-only baseline:
 
 ```powershell
-python .\embedding\embed-and-store.py `
+python .\data_pipeline\embedding\embed-and-store.py `
   --query "Fast-charge protocol for LFP cells in 25 C ambient temperature" `
   --top-k 8
 ```

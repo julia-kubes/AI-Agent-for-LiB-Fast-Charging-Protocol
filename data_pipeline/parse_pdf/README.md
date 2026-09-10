@@ -26,8 +26,9 @@ converter reports an error instead of creating a record with a guessed ID.
 
 ## Setup
 
-1. Put `docling-convert.py` and `battery_paper_metadata.csv` in the collection
-   folder with the PDFs, or use `--root` when running the repository copy.
+1. Keep `battery_paper_metadata.csv` in the collection folder with the PDFs.
+   Run the converter from its repository location and pass the collection with
+   `--root`.
 2. Open an Anaconda Prompt or PowerShell with Conda enabled.
 3. Install Docling if needed:
 
@@ -35,16 +36,17 @@ converter reports an error instead of creating a record with a guessed ID.
    python -m pip install docling
    ```
 
-4. Change to the Knowledge Base folder:
+4. Change to the repository root:
 
    ```
-   cd "C:\path\to\Knowledge DB 3"
+   cd "C:\path\to\repository"
    ```
 
 ## Basic conversion
 
 ```
-python docling-convert.py
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database"
 ```
 
 For the filename above, the converter creates:
@@ -70,13 +72,16 @@ command contains no machine-specific path. To run the repository copy without
 copying it into the collection folder, use:
 
 ```powershell
-python path\to\docling-convert.py --root .
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database"
 ```
 
 To use a differently named CSV inside the collection root:
 
 ```powershell
-python docling-convert.py --metadata-csv my_metadata.csv
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database" `
+  --metadata-csv my_metadata.csv
 ```
 
 ## Re-run conversion
@@ -84,13 +89,15 @@ python docling-convert.py --metadata-csv my_metadata.csv
 Existing outputs are identified by source-PDF path and SHA-256 fingerprint and are skipped by default. To deliberately recreate an existing paper's Markdown and JSON:
 
 ```
-python docling-convert.py --force
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database" --force
 ```
 
 ## Export figures and tables
 
 ```
-python docling-convert.py --export-images --force
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database" --export-images --force
 ```
 
 Images are saved in `Image_Files/<paper_id>/`; the accompanying `manifest.json`
@@ -105,11 +112,16 @@ For new papers, follow this order:
 1. Add and verify the paper's DOI and title in `battery_paper_metadata.csv`; set
    `record_id` equal to the DOI.
 2. Name the PDF with a filesystem-safe form of that DOI.
-3. Run `python docling-convert.py` to create DOI-linked Markdown and Docling JSON.
-4. Run `python create-chunks.py` to create chunks whose `record_id` and
-   `chunk_id` use the DOI.
-5. Run the embedding/storage script.
-6. Run `python import-paper-metadata.py` after the chunks exist in PostgreSQL.
+3. Run `data_pipeline/parse_pdf/docling-convert.py --root <collection>` to
+   create DOI-linked Markdown and Docling JSON.
+4. Run `data_pipeline/chunk/create-chunks.py --root <collection>` with the
+   repository corrections file to create DOI-linked chunks.
+5. Run `data_pipeline/embedding/embed-and-store.py` with the collection's
+   `chunk_files` directory.
+6. Copy the reviewed CSV to
+   `data_pipeline/metadata/battery_paper_metadata.csv`, then run
+   `data_pipeline/metadata/import-paper-metadata.py` after the chunks exist in
+   PostgreSQL.
 
 With this workflow, `migrate-record-ids-to-dois.py` is not needed for newly
 processed papers. It is only a repair tool for records produced by an older
@@ -118,7 +130,8 @@ version of the pipeline.
 ## Formula enrichment
 
 ```
-python docling-convert.py --enrich-formulas --force
+python .\data_pipeline\parse_pdf\docling-convert.py `
+  --root "C:\path\to\Knowledge Database" --enrich-formulas --force
 ```
 
 Formula enrichment tries to convert recognized formulas into LaTeX and can be much slower, so use it selectively.

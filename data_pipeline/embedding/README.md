@@ -21,13 +21,13 @@ existing rows instead of creating duplicates.
 
 ## 1. Create and activate a Python environment
 
-From PowerShell in this `embedding` directory:
+From PowerShell in the repository root:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -r .\data_pipeline\embedding\requirements.txt
 ```
 
 `requirements.txt` installs Sentence Transformers, Transformers, PyTorch,
@@ -57,16 +57,9 @@ This preflight check catches malformed JSON, missing fields, empty text, and
 duplicate chunk IDs without downloading the model or changing the database:
 
 ```powershell
-python path\to\embed-and-store.py `
-  --chunks-root path\to\chunk_files `
+python .\data_pipeline\embedding\embed-and-store.py `
+  --chunks-root "C:\path\to\Knowledge Database\chunk_files" `
   --dry-run
-```
-
-If the current directory contains both `embed-and-store.py` and `chunk_files`,
-the shorter form is:
-
-```powershell
-python .\embed-and-store.py --dry-run
 ```
 
 This step is optional because the same validation runs automatically before
@@ -75,7 +68,8 @@ every actual embedding run.
 ## 4. Embed and store the chunks
 
 ```powershell
-python path\to\embed-and-store.py --chunks-root path\to\chunk_files
+python .\data_pipeline\embedding\embed-and-store.py `
+  --chunks-root "C:\path\to\Knowledge Database\chunk_files"
 ```
 
 The script now finishes embedding and saves `embedding_cache.npz` before it
@@ -83,14 +77,16 @@ opens the PostgreSQL connection. If Neon or the network disconnects during
 storage, retry only the fast upload step:
 
 ```powershell
-python .\embed-and-store.py --store-only
+python .\data_pipeline\embedding\embed-and-store.py `
+  --chunks-root "C:\path\to\Knowledge Database\chunk_files" `
+  --store-only
 ```
 
 You can also run the two stages explicitly:
 
 ```powershell
-python .\embed-and-store.py --embed-only
-python .\embed-and-store.py --store-only
+python .\data_pipeline\embedding\embed-and-store.py --chunks-root "C:\path\to\Knowledge Database\chunk_files" --embed-only
+python .\data_pipeline\embedding\embed-and-store.py --chunks-root "C:\path\to\Knowledge Database\chunk_files" --store-only
 ```
 
 The cache records the model, chunk IDs, and content hashes. `--store-only`
@@ -112,7 +108,9 @@ The terminal displays:
 The default batch size is 16. For limited memory, reduce it:
 
 ```powershell
-python .\embed-and-store.py --batch-size 4 --device cpu
+python .\data_pipeline\embedding\embed-and-store.py `
+  --chunks-root "C:\path\to\Knowledge Database\chunk_files" `
+  --batch-size 4 --device cpu
 ```
 
 The default table is `public.rag_chunks`. Use `--schema` and `--table` to choose
@@ -125,13 +123,14 @@ separately.
 No SQL is required for routine verification:
 
 ```powershell
-python .\embed-and-store.py --query "How does low temperature affect fast charging?" --top-k 5
+python .\data_pipeline\embedding\embed-and-store.py `
+  --query "How does low temperature affect fast charging?" --top-k 5
 ```
 
 Optionally limit results to one source:
 
 ```powershell
-python .\embed-and-store.py `
+python .\data_pipeline\embedding\embed-and-store.py `
   --query "What charging protocol was evaluated?" `
   --record-id guo_2014 `
   --top-k 5
