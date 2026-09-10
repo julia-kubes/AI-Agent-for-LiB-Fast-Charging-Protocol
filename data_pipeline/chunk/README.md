@@ -1,16 +1,14 @@
 # Docling Chunk Creator
 
 `create-chunks.py` creates RAG-ready chunks from the lossless Docling JSON files
-produced by `parse_pdf/docling-convert.py`.
+produced by `data_pipeline/parse_pdf/docling-convert.py`.
 
 ## Input and output layout
 
-Place the script in the collection root beside `Docling_Files` and `MD_Files`:
+Keep the collection data outside the repository. A collection has this layout:
 
 ```text
 Knowledge Database/
-├── create-chunks.py
-├── corrections.json
 ├── Docling_Files/
 │   └── 10.1016j.apenergy.2024.124538.json
 ├── MD_Files/
@@ -34,11 +32,11 @@ contain `record_id`; the filename stem is never silently substituted.
 
 ## Setup
 
-Use the same environment as the PDF converter and install the chunking/tokenizer
+Use the repository virtual environment and install Docling and the tokenizer
 dependencies if needed:
 
 ```powershell
-python -m pip install "docling-core[chunking]" transformers
+python -m pip install docling transformers
 ```
 
 The default tokenizer is `Alibaba-NLP/gte-modernbert-base`. The tokenizer
@@ -47,10 +45,13 @@ used later in the RAG pipeline.
 
 ## Run
 
-From the Knowledge Database folder:
+From the repository root, provide the collection root and the repository's
+reviewed corrections file:
 
 ```powershell
-python create-chunks.py
+python .\data_pipeline\chunk\create-chunks.py `
+  --root "C:\path\to\Knowledge Database" `
+  --corrections .\data_pipeline\chunk\corrections.json
 ```
 
 The defaults are a 350-token final limit and 10% overlap. HybridChunker itself
@@ -75,20 +76,28 @@ quarantined instead of guessed.
 Options can be changed explicitly:
 
 ```powershell
-python create-chunks.py --max-tokens 350 --overlap-percent 10
+python .\data_pipeline\chunk\create-chunks.py `
+  --root "C:\path\to\Knowledge Database" `
+  --corrections .\data_pipeline\chunk\corrections.json `
+  --max-tokens 350 --overlap-percent 10
 ```
 
 To regenerate only selected papers, repeat `--record` with the filesystem-safe
 `paper_id`/filename stem:
 
 ```powershell
-python create-chunks.py --record 10.1016j.apenergy.2024.124538
+python .\data_pipeline\chunk\create-chunks.py `
+  --root "C:\path\to\Knowledge Database" `
+  --corrections .\data_pipeline\chunk\corrections.json `
+  --record 10.1016j.apenergy.2024.124538
 ```
 
-When running the repository copy from another directory, specify the collection:
+The script can also be invoked by absolute path from another directory:
 
 ```powershell
-python create-chunks.py --root "C:\path\to\Knowledge Database"
+python "C:\path\to\repository\data_pipeline\chunk\create-chunks.py" `
+  --root "C:\path\to\Knowledge Database" `
+  --corrections "C:\path\to\repository\data_pipeline\chunk\corrections.json"
 ```
 
 ## Chunk record fields

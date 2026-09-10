@@ -1,7 +1,7 @@
 """Convert every PDF in this collection to Markdown with Docling.
 
-Usage (from this folder, in the Conda environment with Docling installed):
-    python docling-convert.py
+Usage (from the repository root, in an environment with Docling installed):
+    python data_pipeline/parse_pdf/docling-convert.py --root <collection-folder>
 
 Outputs are written beside the GROBID previews without overwriting them:
     MD_Files/<pdf-filename-without-extension>.md
