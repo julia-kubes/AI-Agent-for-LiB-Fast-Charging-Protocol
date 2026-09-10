@@ -127,7 +127,8 @@ def load_dependencies() -> tuple[Any, Any, Any, Any]:
     except ImportError as error:
         raise SystemExit(
             "Missing dependency. Install the packages from "
-            "../embedding/requirements.txt. Original error: " + str(error)
+            "../data_pipeline/embedding/requirements.txt. Original error: "
+            + str(error)
         ) from error
     return psycopg, register_vector, SentenceTransformer, CrossEncoder
 
