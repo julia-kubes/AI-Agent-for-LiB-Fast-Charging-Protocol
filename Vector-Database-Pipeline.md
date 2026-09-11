@@ -164,12 +164,13 @@ Set the database URL in the same PowerShell window:
 ```powershell
 $env:DATABASE_URL = "(paste Database URL from Neon here)"
 ```
-To obtain the URL from Neon:
-1. 
 
-This variable lasts only for the current PowerShell session. PostgreSQL must
-have pgvector enabled, and the database user must have the required table and
-index permissions.
+This variable lasts only for the current PowerShell session.
+
+To obtain the URL from Neon:
+1. Log into you Neon account and navigate to the "AI Charging RAG Project"
+2. Click "Connect"
+3. Copy the connection string
 
 Validate the chunks before embedding:
 
@@ -213,6 +214,8 @@ documents do not need to be embedded again. If the chunks change, rerun
 `--embed-only` before using `--store-only`.
 
 ## 8. Import the updated paper metadata
+
+Make sure all fields in the metadata are filled (you can use an agentic workflow to fill in the remaining fields. It is VERY important to paste the DOI by hand however, the parsing script is not robust to obtaining the correct DOI). 
 
 After reviewing the collection's metadata, copy the updated CSV into:
 
