@@ -77,12 +77,16 @@ notepad .env
 Enter the assigned credentials:
 
 ```text
-DATABASE_URL=postgresql://USERNAME:URL_ENCODED_PASSWORD@HOST:PORT/DATABASE_NAME
-LLM_BASE_URL=https://parley.api.mit.edu/v1
+DATABASE_URL= INSERT_NEON_CONNECTION_STRING_HERE
+LLM_BASE_URL= INSERT_LLM_URL_HERE
 LLM_API_KEY=PASTE_ASSIGNED_API_KEY_HERE
-LLM_MODEL=gpt-5.4-mini
+LLM_MODEL= INSERT_MODEL_NAME_HERE
 APP_DEMO_MODE=false
 ```
+To obtain the URL from Neon:
+1. Log into you Neon account and navigate to the "AI Charging RAG Project"
+2. Click "Connect"
+3. Copy the connection string
 
 Important:
 
@@ -116,3 +120,47 @@ Stop the application by returning to PowerShell and pressing `Ctrl+C`.
   ```powershell
   & ".\.venv\Scripts\python.exe" -m streamlit run ".\app\ui.py" --server.port 8502
   ```
+
+## Contributing Changes of the App to Github
+
+Complete the **Application Setup and Local Launch** instructions first. Collaborators should clone the complete repository once—not separately clone each application branch—and then switch between versions:
+
+```powershell
+git switch literature-synthesis
+git pull
+```
+
+or:
+
+```powershell
+git switch protocol-generation
+git pull
+```
+
+Before editing, create a working branch from the application version being changed:
+
+```powershell
+git switch -c feature/brief-description
+```
+
+After making changes, run the tests:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -v
+```
+
+Commit and push the working branch:
+
+```powershell
+git add path\to\changed-file
+git commit -m "Brief description of the change"
+git push -u origin feature/brief-description
+```
+
+Open a pull request into the correct application branch:
+
+- Literature changes → `literature-synthesis`
+- Protocol changes → `protocol-generation`
+- Do not submit application changes to `main`.
+
+Changes to shared infrastructure—such as parsing, chunking, embedding, metadata, or retrieval—must be applied and tested in both application branches.
